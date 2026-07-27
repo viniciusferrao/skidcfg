@@ -1,0 +1,11 @@
+# LF in the repository for everything text, so the C sources and the Makefile
+# are one spelling whatever checked them out.
+* text=auto eol=lf
+
+# Except what DOS parses: COMMAND.COM wants CRLF and mis-parses a lone LF, and
+# DOSBUILD.BAT is the build that matters here. Both spellings of the extension,
+# because pattern matching is only case insensitive on a case insensitive
+# filesystem and the file is DOSBUILD.BAT.
+*.bat text eol=crlf
+*.BAT text eol=crlf
+*.cmd text eol=crlf

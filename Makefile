@@ -1,0 +1,85 @@
+# skidcfg - a setup program for Stunts 1.1
+#
+# Strict C89 with no dependencies, so it builds anywhere "make" runs. For a
+# 16-bit DOS build, which is the one that matters, run DOSBUILD.BAT under
+# Microsoft C 5.10.
+CC      ?= cc
+CFLAGS  ?= -std=c89 -pedantic -Wall -Wextra -O2
+
+# The drivers this program offers are src/drvtab.h and nothing else. Edit that
+# file to change them, or for the one driver that ships switched off:
+#
+#     make EXTRA=-DSKIDCFG_SC55        the Roland SC-55 entry as well
+#
+# examples/drvmin.h is a cut down table, and what CI builds its second
+# configuration from.
+EXTRA   ?=
+
+SRC      = src/drivers.c src/setup.c src/scrn.c src/install.c src/skidcfg.c
+HDR      = src/drivers.h src/drvtab.h src/mainhlp.h src/setup.h src/scrn.h \
+           src/install.h
+
+# Where your Stunts installation is. Nothing is written into it except by
+# "make install".
+STUNTS_DIR ?= ../stunts
+
+all: skidcfg
+
+skidcfg: $(SRC) $(HDR)
+	$(CC) $(CFLAGS) $(EXTRA) -I src -o $@ $(SRC)
+
+install: skidcfg
+	cp skidcfg "$(STUNTS_DIR)"
+
+# The self-check needs neither the screen nor the game: src/setup.c has no
+# console in it, so the whole file format can be exercised on any host.
+selfcheck: test/selfchk.c src/drivers.c src/setup.c $(HDR)
+	$(CC) $(CFLAGS) -I src -o selfcheck test/selfchk.c \
+	      src/drivers.c src/setup.c
+	./selfcheck
+
+# The same check with the SC-55 entry switched on, which is the build a project
+# shipping that driver makes.
+selfcheck-sc55: test/selfchk.c src/drivers.c src/setup.c $(HDR)
+	$(CC) $(CFLAGS) -DSKIDCFG_SC55 -I src -o selfcheck-sc55 test/selfchk.c \
+	      src/drivers.c src/setup.c
+	./selfcheck-sc55
+
+# And against a table with entries taken out, which is the check that removing
+# one is safe. Nothing in the sources is special cased for it, so this is what
+# says the tree really is table driven. The table is put back afterwards
+# whether the check passed or not.
+selfcheck-min: test/selfchk.c src/drivers.c src/setup.c $(HDR)
+	@cp src/drvtab.h drvtab.bak
+	@cp examples/drvmin.h src/drvtab.h
+	@$(CC) $(CFLAGS) -I src -o selfcheck-min test/selfchk.c \
+	       src/drivers.c src/setup.c && ./selfcheck-min; \
+	  rc=$$?; mv drvtab.bak src/drvtab.h; exit $$rc
+
+# Apply the house style. CLANG_FORMAT lets you point at a pinned build.
+CLANG_FORMAT ?= clang-format
+STYLED = src/*.c src/*.h test/*.c test/dos/*.c
+
+format:
+	$(CLANG_FORMAT) -i --style=file $(STYLED)
+
+format-check:
+	$(CLANG_FORMAT) --dry-run --Werror --style=file $(STYLED)
+
+lint:
+	cppcheck --std=c89 --enable=warning,performance,portability \
+	         --inline-suppr --error-exitcode=1 \
+	         --suppress=missingIncludeSystem src/ test/
+	@for f in $(SRC) test/selfchk.c; do \
+	  $(CC) -std=c90 -pedantic-errors -Wall -Wextra -Wshadow -Wcast-qual \
+	        -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes \
+	        -Wwrite-strings -fanalyzer -O2 -I src -c $$f -o /dev/null \
+	        || exit 1; \
+	done
+
+clean:
+	rm -f skidcfg skidcfg.exe SKIDCFG.EXE selfcheck selfcheck.exe \
+	      selfcheck-sc55 selfcheck-min drvtab.bak src/*.o src/*.obj
+
+.PHONY: all install selfcheck selfcheck-sc55 selfcheck-min format \
+        format-check lint clean

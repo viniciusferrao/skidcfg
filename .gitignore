@@ -1,0 +1,17 @@
+# Build output, in the spellings the various toolchains produce.
+/build/
+/skidcfg
+/skidcfg.exe
+/SKIDCFG.EXE
+/skidcfg-sc55
+/selfcheck
+/selfcheck.exe
+/selfcheck-sc55
+/drvtab.bak
+/SCCHECK.EXE
+*.o
+*.obj
+*.OBJ
+*.map
+*.MAP
+
