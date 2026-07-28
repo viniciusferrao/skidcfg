@@ -238,13 +238,18 @@ the field and the number.
 | `brief` | 21 characters, no brackets | 23 on the screen once `skidcfg` adds them |
 | `mode` | 16 characters | keeps line 2 of `SETUP.DAT` inside its 80 |
 | `disk` | 1 character, `A` or `B` | it is a disk label |
-| longest word in `help` | 24 characters | a longer one cannot be wrapped at all |
-| `help` after wrapping | 16 lines of 24 columns | see below |
+| longest word in `help` | 26 characters | a longer one cannot be wrapped at all |
+| `help` after wrapping | 15 lines of 26 columns | see below |
 
-The help window is drawn 26 columns wide but is wrapped to 24, because 24 is
-the widest line the original ever wrote and the point is a screen that looks
-like the original's. Its height is one row per wrapped line, and its shadow has
-to clear the footer on row 24, which is where 16 comes from.
+The help window's interior is columns 49 to 74, which is the 26. Its height is
+one row per wrapped line and it grows downwards from row 7 until its shadow
+would reach the footer on row 24, which is the 15. Both numbers are
+`DRV_HELP_COLS` and `DRV_HELP_ROWS` in `src/drivers.h`, and the self check holds
+every paragraph in the program against them, transcribed and wrapped alike.
+
+The original's own paragraphs never exceed 24 columns, but that is its
+typography rather than a limit, and wrapping to 24 would leave two columns of
+the window permanently empty.
 
 **What the parser will hold**, so that a block cannot make it read past
 anything:
@@ -350,10 +355,17 @@ not appended to a finished binary: appending is what was measured above, and
 while `SC15.DRV` tolerated it, a driver should carry its description as part of
 what it is.
 
-The block at the top of this document is the one `SC15.DRV` should carry. It is
-about 190 bytes, which takes the driver to roughly 1605, well inside what was
-measured safe. Its switch, `/ssc`, comes from its own name and is not in the
-block.
+`SC15.DRV` carries the commented block from *Anything else you want to say*,
+which is 351 bytes and takes the driver from 1416 to 1767. The uncommented one
+at the top of this document is about 200 bytes and would make it about 1620.
+Both are well inside what was measured safe. Its switch, `/ssc`, comes from its
+own name and is not in the block.
+
+The block is the last thing in the file: `SKIDCFGEND` and its newline end at
+byte 1767, which is the end of the driver. That is what a linker does with a
+trailing string constant, and it is worth a reader checking itself against,
+because a scanner that expects bytes after the terminator works on every
+fixture somebody writes by hand and fails on the real thing.
 
 Its help paragraph says what it says on purpose. The SC-55 requirement is a
 real one: the driver uses the GS sound set, and a General MIDI module will play

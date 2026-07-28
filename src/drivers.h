@@ -38,6 +38,21 @@ struct drv_opt {
     const char *label; /* "EGA graphics", NULL for an entry never offered */
     const char *disk;  /* video only: the install disk line 4 names */
     const char *help;  /* the F1 paragraph, NULL if there is none */
+    const char *from;  /* the driver file this came from, NULL if built in */
+    /* The driver file the game loads for this entry, or NULL for one that
+     * needs none. Written down rather than worked out, because it cannot be
+     * worked out: LOAD.EXE turns an unknown /sxx into XX15.DRV, which is
+     * measured, but it knows some switches already and /ssb is one of them.
+     * /ssb loads AD15.DRV and ignores an SB15.DRV put there on purpose, so
+     * Sound Blaster and Ad Lib share a driver and a rule that derived SB15.DRV
+     * would call every healthy install broken. Video rows are NULL: a mode is
+     * code inside LOAD.EXE and has no file of its own. */
+    const char *needs;
+    /* Set when the file named by needs is not in the directory. The row stays
+     * in the table so that a SETUP.DAT naming it still reads and writes, and
+     * comes off the menu so that it cannot be chosen. Exactly what a NULL
+     * label does for the VGA row, but decided at run time. */
+    int hidden;
 };
 
 /* A whole table. Passing this around rather than an array and a count is what
@@ -61,6 +76,19 @@ extern const struct drv_tab drv_sound;
  * paragraph against them and the check must not have its own copy. */
 #define DRV_HELP_COLS 26
 #define DRV_HELP_ROWS 15
+
+/* How many rows a menu can have. A window grows a row per entry and its shadow
+ * has to clear the footer on row 24, and the submenus start at row 11, so ten
+ * is where a menu runs out of screen. It lives here because src/skidcfg.c
+ * draws against it and src/drvscan.c refuses an eleventh row against it, and
+ * the two must not have separate copies of the number. */
+#define DRV_ROWS_MAX 10
+
+/* What every video fragment starts with. Line 2 of SETUP.DAT is a command
+ * line, and the video half of it is the invocation, so a video row carries the
+ * program name and a sound row is a switch on the end. src/drvscan.c builds
+ * one out of a block's mode, and src/skidcfg.c drops it from a column. */
+#define DRV_VIDEO_CMD "load.exe /u "
 
 /* How many rows the menu has, which is the entries that have a label. */
 int drv_rows(const struct drv_tab *t);

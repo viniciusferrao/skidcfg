@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "drivers.h"
+#include "drvscan.h"
 #include "install.h"
 #include "mainhlp.h"
 #include "scrn.h"
@@ -48,13 +49,6 @@
 #define MAIN_SOUND 1
 #define MAIN_INSTALL 2
 #define MAIN_EXIT 3
-
-/* A window grows a row per entry and its shadow has to stay off the footer, so
- * a sound table with more than ten entries has nowhere to put the eleventh.
- * Nothing that could reach that exists; the limit is here because the table is
- * a build time list and running off the bottom of the screen would otherwise
- * be silent. */
-#define ROWS_MAX 10
 
 enum key { KEY_NONE, KEY_UP, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_HELP };
 
@@ -349,14 +343,14 @@ static void erase(const struct win *w, int n)
  * worse setup program. */
 static int driver_menu(const struct win *w, const struct drv_tab *t, int cur)
 {
-    const char *labels[ROWS_MAX];
-    const char *helps[ROWS_MAX];
+    const char *labels[DRV_ROWS_MAX];
+    const char *helps[DRV_ROWS_MAX];
     int         n = drv_rows(t);
     int         i;
     int         row;
 
-    if (n > ROWS_MAX) {
-        n = ROWS_MAX;
+    if (n > DRV_ROWS_MAX) {
+        n = DRV_ROWS_MAX;
     }
     for (i = 0; i < n; i++) {
         labels[i] = drv_at(t, i)->label;
@@ -456,11 +450,100 @@ static int usage(const char *prog)
            "With no option it behaves like the original SETUP.EXE\n\n",
            prog);
     fputs("options:\n"
+          "  /D   list the drivers found, and any block that was not used\n"
           "  /I   install SKIDCFG in place of SETUP.EXE\n"
           "  /U   uninstall SKIDCFG and put the original SETUP.EXE back\n"
           "  /V   show the version\n"
           "  /?   show this help\n",
           stdout);
+    return 0;
+}
+
+/* What this program made of the directory, which is the only way to tell three
+ * different problems apart. A driver that is not on the menu looks the same
+ * whether its file was never opened, held no block, or held one that was
+ * refused; without this the only symptom of any of them is a row that is not
+ * there. See DRVBLOCK.md. */
+/* Whether anything in a table was taken off the menu, so the note explaining
+ * the mark is printed only when there is a mark to explain. */
+static int missing_any(const struct drv_tab *t)
+{
+    int i;
+
+    for (i = 0; i < t->n; i++) {
+        if (t->opt[i].label != NULL && t->opt[i].hidden) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void list_table(const char *title, const struct drv_tab *t)
+{
+    int i;
+
+    printf("\n%s\n", title);
+    for (i = 0; i < t->n; i++) {
+        const struct drv_opt *o = &t->opt[i];
+        const char           *src = o->cmd;
+        char                  cmd[32];
+        int                   n;
+
+        if (o->label == NULL) {
+            continue; /* in the table, never on the menu */
+        }
+        /* A video fragment is the whole invocation and a sound one is a
+         * switch, so the program name is dropped: what identifies the row is
+         * the part after it, and the column has to hold both. */
+        if (strncmp(src, DRV_VIDEO_CMD, sizeof DRV_VIDEO_CMD - 1) == 0) {
+            src += sizeof DRV_VIDEO_CMD - 1;
+        }
+        /* The fragment carries the trailing space the file needs and the
+         * screen does not. */
+        for (n = 0; n < (int)sizeof cmd - 1 && src[n] != '\0'; n++) {
+            cmd[n] = src[n];
+        }
+        while (n > 0 && cmd[n - 1] == ' ') {
+            n--;
+        }
+        cmd[n] = '\0';
+        printf("%s%2d  %-9s %-9s %s %s\n", o->hidden ? "! " : "  ", o->index,
+               cmd, o->from != NULL ? o->from : "built in", o->label,
+               o->brief != NULL ? o->brief : "");
+    }
+}
+
+static int drivers(void)
+{
+    int n;
+    int i;
+
+    drv_scan();
+    list_table("Sound", drv_scan_sound());
+    list_table("Video", drv_scan_video());
+
+    /* These rows are in the table but not on the menu. A row whose driver is
+     * absent would write a perfectly valid SETUP.DAT and then LOAD.EXE stops
+     * with "Can't find driver!" and the game does not start at all, so it is
+     * not a worse choice than the others, it is not a choice. A built-in row
+     * can be in that state as easily as any other: a Stunts missing MT15.DRV
+     * has offered Roland MT-32 since 1991. */
+    if (missing_any(drv_scan_sound()) || missing_any(drv_scan_video())) {
+        printf("\n! The driver file required for this device is damaged or "
+               "missing.\n  The game will fail to load, so this row is not "
+               "offered on the menu.\n");
+    }
+
+    n = drv_scan_skipped();
+    if (n == 0) {
+        return 0;
+    }
+    printf("\nSkipped\n");
+    for (i = 0; i < n; i++) {
+        /* 13 rather than the 12 an 8.3 name needs, so the reason starts in the
+         * same column as the file a row came from in the tables above. */
+        printf("  %-13s %s\n", drv_scan_skip_file(i), drv_scan_skip_why(i));
+    }
     return 0;
 }
 
@@ -513,6 +596,9 @@ static int option(int argc, char **argv)
     if (opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
         return inst_uninstall();
     }
+    if (opt_is(a, "DRIVERS")) {
+        return drivers();
+    }
     if (opt_is(a, "VERSION")) {
         return version();
     }
@@ -535,6 +621,10 @@ int main(int argc, char **argv)
     if (argc > 1) {
         return option(argc, argv);
     }
+
+    /* Before the file is read, because setup.c matches line 2 against the
+     * tables and a driver that describes itself has to be in them by then. */
+    drv_scan();
 
     setup_read(&s, SETUP_PATH);
 
@@ -559,17 +649,17 @@ int main(int argc, char **argv)
          * a file whose two lines disagree it names a driver the game is not
          * playing. These come from whatever setup.c believed, which is line 2
          * where line 2 could be read. */
-        briefs[MAIN_VIDEO] = brief_of(&drv_video, s.video);
-        briefs[MAIN_SOUND] = brief_of(&drv_sound, s.sound);
+        briefs[MAIN_VIDEO] = brief_of(drv_scan_video(), s.video);
+        briefs[MAIN_SOUND] = brief_of(drv_scan_sound(), s.sound);
 
         cur = choose(&MAIN, labels, briefs, helps, MAIN_N, cur);
         if (cur < 0) {
             break; /* ESC, which writes nothing */
         }
         if (cur == MAIN_VIDEO) {
-            s.video = driver_menu(&VIDEO, &drv_video, s.video);
+            s.video = driver_menu(&VIDEO, drv_scan_video(), s.video);
         } else if (cur == MAIN_SOUND) {
-            s.sound = driver_menu(&SOUND, &drv_sound, s.sound);
+            s.sound = driver_menu(&SOUND, drv_scan_sound(), s.sound);
         } else if (cur == MAIN_INSTALL) {
             help_show(main_help[MAIN_HELP_INSTALL_SAID]);
         } else {

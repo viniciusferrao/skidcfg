@@ -33,6 +33,10 @@ rem a long address to a short one, which is the compiler telling you the return
 rem value is being truncated.
 cl /c /AL /W3 %EXTRA% drivers.c
 if errorlevel 1 goto fail
+cl /c /AL /W3 %EXTRA% drvblk.c
+if errorlevel 1 goto fail
+cl /c /AL /W3 %EXTRA% drvscan.c
+if errorlevel 1 goto fail
 cl /c /AL /W3 %EXTRA% setup.c
 if errorlevel 1 goto fail
 cl /c /AL /W3 %EXTRA% scrn.c
@@ -54,7 +58,7 @@ rem           externals that name no source line.
 rem
 rem   /STACK  the default 2 KB is tight once argv and a few automatic buffers
 rem           are on it, and DOS reports the overflow as a bare abnormal exit.
-link /NOI /NOD /STACK:8192 drivers+setup+scrn+install+skidcfg,..\SKIDCFG.EXE,,LLIBCR+LIBH+EM;
+link /NOI /NOD /STACK:8192 drivers+drvblk+drvscan+setup+scrn+install+skidcfg,..\SKIDCFG.EXE,,LLIBCR+LIBH+EM;
 if errorlevel 1 goto fail
 
 rem The self-check. It exercises the whole SETUP.DAT format on files it writes
@@ -63,7 +67,7 @@ rem in test\ so both links can use the same objects; skidcfg.obj is left out
 rem because this file brings its own main().
 cl /c /AL /W3 %EXTRA% /I. ..\test\selfchk.c
 if errorlevel 1 goto fail
-link /NOI /NOD /STACK:8192 selfchk+drivers+setup,..\SCCHECK.EXE,,LLIBCR+LIBH+EM;
+link /NOI /NOD /STACK:8192 selfchk+drivers+drvblk+drvscan+setup,..\SCCHECK.EXE,,LLIBCR+LIBH+EM;
 if errorlevel 1 goto fail
 
 del *.obj

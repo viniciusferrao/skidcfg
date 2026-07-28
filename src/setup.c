@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "drivers.h"
+#include "drvscan.h"
 #include "setup.h"
 
 /* Six lines is the whole file. Reading more would only give the parsers below
@@ -125,7 +126,8 @@ static int from_indices(const char *line, int *video, int *sound)
     if (!take_int(&p, &v) || !take_int(&p, &s)) {
         return 0;
     }
-    if (drv_find(&drv_video, v) == NULL || drv_find(&drv_sound, s) == NULL) {
+    if (drv_find(drv_scan_video(), v) == NULL ||
+        drv_find(drv_scan_sound(), s) == NULL) {
         return 0;
     }
     *video = v;
@@ -143,18 +145,19 @@ static int from_cmdline(const char *line, int *video, int *sound)
     int v;
     int s;
 
-    for (v = 0; v < drv_video.n; v++) {
+    for (v = 0; v < drv_scan_video()->n; v++) {
         const char *p = line;
 
-        if (!take_tokens(&p, drv_video.opt[v].cmd)) {
+        if (!take_tokens(&p, drv_scan_video()->opt[v].cmd)) {
             continue;
         }
-        for (s = 0; s < drv_sound.n; s++) {
+        for (s = 0; s < drv_scan_sound()->n; s++) {
             const char *q = p;
 
-            if (take_tokens(&q, drv_sound.opt[s].cmd) && rest_is_blank(q)) {
-                *video = drv_video.opt[v].index;
-                *sound = drv_sound.opt[s].index;
+            if (take_tokens(&q, drv_scan_sound()->opt[s].cmd) &&
+                rest_is_blank(q)) {
+                *video = drv_scan_video()->opt[v].index;
+                *sound = drv_scan_sound()->opt[s].index;
                 return 1;
             }
         }
@@ -196,8 +199,8 @@ void setup_default(struct setup *s)
                                                       "disk 'B'", "tdy.cod"};
     int                      i;
 
-    s->video = drv_video.fallback;
-    s->sound = drv_sound.fallback;
+    s->video = drv_scan_video()->fallback;
+    s->sound = drv_scan_sound()->fallback;
     s->origin = SETUP_FROM_DEFAULTS;
     s->conflict = 0;
     for (i = 0; i < SETUP_TAIL_N; i++) {
@@ -278,8 +281,8 @@ int setup_read(struct setup *s, const char *path)
  * CRCRLF on the machine it is for. */
 int setup_write(const struct setup *s, const char *path)
 {
-    const struct drv_opt *vid = drv_find(&drv_video, s->video);
-    const struct drv_opt *snd = drv_find(&drv_sound, s->sound);
+    const struct drv_opt *vid = drv_find(drv_scan_video(), s->video);
+    const struct drv_opt *snd = drv_find(drv_scan_sound(), s->sound);
     FILE                 *f;
     int                   i;
     int                   bad;

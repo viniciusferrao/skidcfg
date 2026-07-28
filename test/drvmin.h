@@ -41,7 +41,7 @@
 #    define DRV_VIDEO(index, command, brief, label, disk, help)
 #endif
 #ifndef DRV_SOUND
-#    define DRV_SOUND(index, command, brief, label, help)
+#    define DRV_SOUND(index, command, needs, brief, label, help)
 #endif
 
 DRV_VIDEO(2, "load.exe /u EGA  ", "(EGA)", "EGA graphics", "disk 'A'",
@@ -54,12 +54,12 @@ DRV_VIDEO(0, "load.exe /u CGA  ", "(CGA)", "CGA graphics", "disk 'A'",
           "graphics support in\n"
           "your PC.")
 
-DRV_SOUND(0, "/spc /ns ", "(No sound)", "No music or sound effects",
+DRV_SOUND(0, "/spc /ns ", "PC15.DRV", "(No sound)", "No music or sound effects",
           "Select if you do not want\n"
           "any music or sound effects\n"
           "played in the game.")
 
-DRV_SOUND(1, "/spc ", "(PC speaker)", "Internal PC speaker",
+DRV_SOUND(1, "/spc ", "PC15.DRV", "(PC speaker)", "Internal PC speaker",
           "Select if you want the\n"
           "music and sound effects to\n"
           "use your PC's speaker.\n"

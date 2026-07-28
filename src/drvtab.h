@@ -8,7 +8,7 @@
  * ------------------------------------------------------------------ the rows
  *
  *     DRV_VIDEO(index, command, brief, label, disk, help)
- *     DRV_SOUND(index, command, brief, label, help)
+ *     DRV_SOUND(index, command, needs, brief, label, help)
  *
  * index    what line 1 of SETUP.DAT stores for this entry. It is a number in
  *          a file somebody else's program wrote, so it belongs to the entry
@@ -17,9 +17,17 @@
  *          everything under it. Unique within its table, and that is checked.
  * command  what the entry contributes to line 2, trailing spaces and all.
  *          Line 2 is one video string followed by one sound string and
- *          nothing else, which is why the spacing looks the way it does. The
- *          two characters after /s are the driver name prefix LOAD.EXE uses,
- *          so /ssc reaches SC15.DRV and the SC prefixed voice banks.
+ *          nothing else, which is why the spacing looks the way it does.
+ * needs    sound rows only: the driver file the game loads for this entry, so
+ *          that a broken installation can be reported rather than offered.
+ *          Written down rather than derived from the command, and it has to
+ *          be. LOAD.EXE turns a /sxx it does not know into XX15.DRV, which is
+ *          measured: SC15.DRV copied to ZZ15.DRV answers to /szz. But it knows
+ *          some already, and /ssb is one. /ssb loads AD15.DRV and ignores an
+ *          SB15.DRV put beside it deliberately, so Sound Blaster and Ad Lib
+ *          share the OPL driver and a rule that derived SB15.DRV would call
+ *          every healthy installation broken. NULL for an entry that needs no
+ *          file.
  * brief    what the main menu shows in brackets beside the item.
  * label    what the submenu lists. NULL for an entry that is read and written
  *          but never offered; see the VGA row.
@@ -91,7 +99,7 @@
 #    define DRV_VIDEO(index, command, brief, label, disk, help)
 #endif
 #ifndef DRV_SOUND
-#    define DRV_SOUND(index, command, brief, label, help)
+#    define DRV_SOUND(index, command, needs, brief, label, help)
 #endif
 
 /* --------------------------------------------------------------- video ---
@@ -157,33 +165,33 @@ DRV_VIDEO(5, "load.exe /u VGA /v ", "(VGA)", NULL, NULL, NULL)
 /* The original's text for this one ends in a newline its own window record is
  * not tall enough for, so the last line would have nowhere to go. Dropped,
  * which renders identically and makes the derived height match the record. */
-DRV_SOUND(0, "/spc /ns ", "(No sound)", "No music or sound effects",
+DRV_SOUND(0, "/spc /ns ", "PC15.DRV", "(No sound)", "No music or sound effects",
           "Select if you do not want\n"
           "any music or sound effects\n"
           "played in the game.")
 
-DRV_SOUND(1, "/spc ", "(PC speaker)", "Internal PC speaker",
+DRV_SOUND(1, "/spc ", "PC15.DRV", "(PC speaker)", "Internal PC speaker",
           "Select if you want the\n"
           "music and sound effects to\n"
           "use your PC's speaker.\n"
           "This option will work on\n"
           "all IBM's and clones.")
 
-DRV_SOUND(2, "/std ", "(Tandy)", "Tandy sound",
+DRV_SOUND(2, "/std ", "TD15.DRV", "(Tandy)", "Tandy sound",
           "Select if you have a Tandy\n"
           "computer with four voice\n"
           "sound.")
 
-DRV_SOUND(3, "/sad ", "(Ad Lib)", "Ad Lib card",
+DRV_SOUND(3, "/sad ", "AD15.DRV", "(Ad Lib)", "Ad Lib card",
           "Select if you have an\n"
           "Ad Lib Music Synthesis\n"
           "in your PC.")
 
-DRV_SOUND(4, "/ssb ", "(Sound Blaster)", "Sound Blaster card",
+DRV_SOUND(4, "/ssb ", "AD15.DRV", "(Sound Blaster)", "Sound Blaster card",
           "Select if you have a Sound\n"
           "Blaster card in your PC.")
 
-DRV_SOUND(5, "/smt ", "(MT-32)", "Roland MT-32",
+DRV_SOUND(5, "/smt ", "MT15.DRV", "(MT-32)", "Roland MT-32",
           "Select if you have\n"
           "Roland MT-32 support in\n"
           "your PC.")
@@ -216,7 +224,7 @@ DRV_SOUND(5, "/smt ", "(MT-32)", "Roland MT-32",
  * a help paragraph that implies any GM module will do would be the thing that
  * caused it. */
 #ifdef SKIDCFG_SC55
-DRV_SOUND(6, "/ssc ", "(SC-55)", "Roland SC-55",
+DRV_SOUND(6, "/ssc ", "SC15.DRV", "(SC-55)", "Roland SC-55",
           "Select if you have a\n"
           "Roland Sound Canvas on\n"
           "the MPU-401 port. It\n"

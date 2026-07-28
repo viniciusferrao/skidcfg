@@ -35,12 +35,13 @@ if not exist build mkdir build
 
 echo Building skidcfg...
 %CC% %CFLAGS% %EXTRA% -I src -o build\skidcfg.exe ^
-    src\drivers.c src\setup.c src\scrn.c src\install.c src\skidcfg.c
+    src\drivers.c src\drvblk.c src\setup.c src\scrn.c src\install.c ^
+    src\skidcfg.c
 if errorlevel 1 goto :failed
 
 echo Building the self-check...
 %CC% %CFLAGS% %EXTRA% -I src -o build\selfcheck.exe ^
-    test\selfchk.c src\drivers.c src\setup.c
+    test\selfchk.c src\drivers.c src\drvblk.c src\setup.c
 if errorlevel 1 goto :failed
 
 rem From inside build\, because the self-check writes its scratch SETUP.DAT

@@ -11,7 +11,7 @@
  * says rather than by being told. */
 
 #define DRV_VIDEO(index, command, brief, label, disk, help) \
-    {index, command, brief, label, disk, help},
+    {index, command, brief, label, disk, help, NULL, NULL, 0},
 static const struct drv_opt video_opt[] = {
 #include "drvtab.h"
 };
@@ -19,8 +19,8 @@ static const struct drv_opt video_opt[] = {
 /* A sound row has no install disk. Line 4 of SETUP.DAT names where the chosen
  * video mode's code files are, and a sound driver has nothing to say about
  * it. */
-#define DRV_SOUND(index, command, brief, label, help) \
-    {index, command, brief, label, NULL, help},
+#define DRV_SOUND(index, command, needs, brief, label, help) \
+    {index, command, brief, label, NULL, help, NULL, needs, 0},
 static const struct drv_opt sound_opt[] = {
 #include "drvtab.h"
 };
@@ -42,7 +42,7 @@ int drv_rows(const struct drv_tab *t)
     int i;
 
     for (i = 0; i < t->n; i++) {
-        if (t->opt[i].label != NULL) {
+        if (t->opt[i].label != NULL && !t->opt[i].hidden) {
             rows++;
         }
     }
@@ -54,7 +54,7 @@ const struct drv_opt *drv_at(const struct drv_tab *t, int row)
     int i;
 
     for (i = 0; i < t->n; i++) {
-        if (t->opt[i].label != NULL && row-- == 0) {
+        if (t->opt[i].label != NULL && !t->opt[i].hidden && row-- == 0) {
             return &t->opt[i];
         }
     }
@@ -80,9 +80,9 @@ int drv_row_of(const struct drv_tab *t, int index)
 
     for (i = 0; i < t->n; i++) {
         if (t->opt[i].index == index) {
-            return t->opt[i].label == NULL ? 0 : row;
+            return (t->opt[i].label == NULL || t->opt[i].hidden) ? 0 : row;
         }
-        if (t->opt[i].label != NULL) {
+        if (t->opt[i].label != NULL && !t->opt[i].hidden) {
             row++;
         }
     }

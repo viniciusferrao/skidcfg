@@ -15,9 +15,14 @@ CFLAGS  ?= -std=c89 -pedantic -Wall -Wextra -O2
 # its third configuration from.
 EXTRA   ?=
 
-SRC      = src/drivers.c src/setup.c src/scrn.c src/install.c src/skidcfg.c
-HDR      = src/drivers.h src/drvtab.h src/mainhlp.h src/setup.h src/scrn.h \
-           src/install.h src/version.h
+# What the self-check links against. It needs neither the screen nor the
+# keyboard, and drvscan.c off DOS finds no drivers and says so, which leaves
+# the built-in tables standing.
+CHKSRC   = src/drivers.c src/drvblk.c src/drvscan.c src/setup.c
+
+SRC      = $(CHKSRC) src/scrn.c src/install.c src/skidcfg.c
+HDR      = src/drivers.h src/drvblk.h src/drvscan.h src/drvtab.h \
+           src/mainhlp.h src/setup.h src/scrn.h src/install.h src/version.h
 
 # Where your Stunts installation is. Nothing is written into it except by
 # "make install".
@@ -33,27 +38,27 @@ install: skidcfg
 
 # The self-check needs neither the screen nor the game: src/setup.c has no
 # console in it, so the whole file format can be exercised on any host.
-selfcheck: test/selfchk.c src/drivers.c src/setup.c $(HDR)
+selfcheck: test/selfchk.c $(CHKSRC) $(HDR)
 	$(CC) $(CFLAGS) -I src -o selfcheck test/selfchk.c \
-	      src/drivers.c src/setup.c
+	      $(CHKSRC)
 	./selfcheck
 
 # The same check with the SC-55 entry switched on, which is the build a project
 # shipping that driver makes.
-selfcheck-sc55: test/selfchk.c src/drivers.c src/setup.c $(HDR)
+selfcheck-sc55: test/selfchk.c $(CHKSRC) $(HDR)
 	$(CC) $(CFLAGS) -DSKIDCFG_SC55 -I src -o selfcheck-sc55 test/selfchk.c \
-	      src/drivers.c src/setup.c
+	      $(CHKSRC)
 	./selfcheck-sc55
 
 # And against a table with entries taken out, which is the check that removing
 # one is safe. Nothing in the sources is special cased for it, so this is what
 # says the tree really is table driven. The table is put back afterwards
 # whether the check passed or not.
-selfcheck-min: test/selfchk.c src/drivers.c src/setup.c $(HDR)
+selfcheck-min: test/selfchk.c $(CHKSRC) $(HDR)
 	@cp src/drvtab.h drvtab.bak
 	@cp test/drvmin.h src/drvtab.h
 	@$(CC) $(CFLAGS) -I src -o selfcheck-min test/selfchk.c \
-	       src/drivers.c src/setup.c && ./selfcheck-min; \
+	       $(CHKSRC) && ./selfcheck-min; \
 	  rc=$$?; mv drvtab.bak src/drvtab.h; exit $$rc
 
 # Apply the house style. CLANG_FORMAT lets you point at a pinned build.
