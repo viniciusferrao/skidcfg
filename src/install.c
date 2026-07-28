@@ -2,14 +2,18 @@
 #include <string.h>
 
 #include "install.h"
+#include "version.h"
 
 #define SETUP_EXE "SETUP.EXE"
 #define SETUP_ORG "SETUP.ORG"
+#define SKIDCFG_EXE SKIDCFG_NAME ".EXE"
 
-/* How this recognises its own binary. TITLE_2 is on the screen anyway, so the
- * marker costs nothing and cannot drift out of the executable: if the string
- * is not in there, neither is the program. Keep the two spellings the same. */
-static const char MARK[] = "SKIDCFG: Version 1.0";
+/* How this recognises its own binary. The marker is part of the title line, so
+ * it is in the executable anyway and cannot drift out of it while the program
+ * still draws its own screen, and it carries no version number so that
+ * /U recognises a copy installed by a different release. See version.h.
+ */
+static const char MARK[] = SKIDCFG_MARK;
 
 /* 8 KB is more than the largest run this ever copies and small enough for the
  * stack MSC 5.10 links with. It is static rather than automatic for that
@@ -123,33 +127,32 @@ int inst_install(const char *self)
 
     switch (st) {
     case INST_DONE:
-        printf("Already installed.  %s is skidcfg and %s is the original.\n",
-               SETUP_EXE, SETUP_ORG);
+        printf("Already installed. %s is %s and the original is %s.\n",
+               SETUP_EXE, SKIDCFG_NAME, SETUP_ORG);
         return 0;
     case INST_ABSENT:
-        printf("There is no %s here.  Run this from the directory the game is\n"
+        printf("There is no %s here. Run this from the directory the game is\n"
                "installed in, the one holding LOAD.EXE.\n",
                SETUP_EXE);
         return 1;
     case INST_FOREIGN:
-        printf(
-            "%s is already here and %s is not skidcfg, so this cannot say\n"
-            "which of them is the original.  Nothing changed.  Sort the two\n"
-            "out by hand and run this again.\n",
-            SETUP_ORG, SETUP_EXE);
+        printf("%s is already here and %s is not %s, so this cannot say\n"
+               "which of them is the original. Nothing changed. Sort the two\n"
+               "out by hand and run this again.\n",
+               SETUP_ORG, SETUP_EXE, SKIDCFG_NAME);
         return 1;
     case INST_UNSURE:
-        printf("%s looks like skidcfg already but there is no %s to put back\n"
-               "afterwards, so installing would leave no way out.  Nothing\n"
+        printf("%s looks like %s already but there is no %s to put back\n"
+               "afterwards, so installing would leave no way out. Nothing\n"
                "changed.\n",
-               SETUP_EXE, SETUP_ORG);
+               SETUP_EXE, SKIDCFG_NAME, SETUP_ORG);
         return 1;
     default:
         break;
     }
 
     if (self == NULL || !exists(self)) {
-        printf("Cannot find this program's own file to copy.  DOS 3.0 and\n"
+        printf("Cannot find this program's own file to copy. DOS 3.0 and\n"
                "later pass it on the command line; older ones do not, and\n"
                "there it has to be copied over %s by hand.\n",
                SETUP_EXE);
@@ -158,41 +161,46 @@ int inst_install(const char *self)
 
     /* Rename first. The original is never overwritten and never deleted, so
      * the worst this can leave behind is a directory with the original under
-     * the other name, which /REMOVE puts back. */
+     * the other name, which /U puts back. */
     if (rename(SETUP_EXE, SETUP_ORG) != 0) {
-        printf("Cannot rename %s to %s.  Nothing changed.\n", SETUP_EXE,
+        printf("Cannot rename %s to %s. Nothing changed.\n", SETUP_EXE,
                SETUP_ORG);
         return 1;
     }
     if (copy_file(self, SETUP_EXE) != 0) {
-        printf("Cannot write %s.  Putting %s back.\n", SETUP_EXE, SETUP_ORG);
+        printf("Cannot write %s. Putting %s back.\n", SETUP_EXE, SETUP_ORG);
         if (rename(SETUP_ORG, SETUP_EXE) != 0) {
-            printf("\nThat did not work either.  The original is still here,\n"
-                   "under the name %s.  Rename it to %s to undo this.\n",
+            printf("\nThat did not work either. The original is still here,\n"
+                   "under the name %s. Rename it to %s to undo this.\n",
                    SETUP_ORG, SETUP_EXE);
         }
         return 1;
     }
 
-    printf("Installed.  %s is now skidcfg and the original is %s.\n"
-           "Run SKIDCFG /REMOVE to put it back exactly as it was.\n",
-           SETUP_EXE, SETUP_ORG);
+    /* /U is on the second line rather than left to the help because this is
+     * the moment somebody needs it: the program that undoes this is now
+     * answering to the other name, so the obvious thing to reach for is gone.
+     */
+    printf("%s has been installed.\n"
+           "%s is now %s and the original program has been backed up.\n"
+           "Run %s /U to uninstall %s.\n",
+           SKIDCFG_NAME, SETUP_EXE, SKIDCFG_EXE, SETUP_EXE, SKIDCFG_NAME);
     return 0;
 }
 
-int inst_remove(void)
+int inst_uninstall(void)
 {
     switch (inst_state()) {
     case INST_NONE:
     case INST_ABSENT:
-        printf("Not installed.  %s is not here, so there is nothing to put\n"
+        printf("Not installed. %s is not here, so there is nothing to put "
                "back.\n",
                SETUP_ORG);
         return 1;
     case INST_FOREIGN:
-        printf("%s is here but %s is not skidcfg, so this did not put it\n"
-               "anywhere and will not take it away.  Nothing changed.\n",
-               SETUP_ORG, SETUP_EXE);
+        printf("%s is here but %s is not %s, so this did not put it\n"
+               "anywhere and will not take it away. Nothing changed.\n",
+               SETUP_ORG, SETUP_EXE, SKIDCFG_NAME);
         return 1;
     default:
         break;
@@ -201,18 +209,24 @@ int inst_remove(void)
     /* Ours goes first: if the rename then failed with the original already
      * gone, there would be nothing to run at all. */
     if (remove(SETUP_EXE) != 0) {
-        printf("Cannot remove %s.  Nothing changed.\n", SETUP_EXE);
+        printf("Cannot remove %s. Nothing changed.\n", SETUP_EXE);
         return 1;
     }
     if (rename(SETUP_ORG, SETUP_EXE) != 0) {
-        printf("Cannot rename %s back to %s.  The original is still here\n"
+        printf("Cannot rename %s back to %s. The original is still here\n"
                "under the name %s; rename it by hand.\n",
                SETUP_ORG, SETUP_EXE, SETUP_ORG);
         return 1;
     }
 
-    printf(
-        "Removed.  %s is the original again and skidcfg is out of the way.\n",
-        SETUP_EXE);
+    /* The third line is the whole truth about what this did: it puts the
+     * original back and takes our copy out of its way, and the copy that was
+     * run to install in the first place is still sitting there. Removing that
+     * would be this program deleting a file nobody asked it to touch, which is
+     * the one thing the rest of this file is written to avoid. */
+    printf("%s has been uninstalled.\n"
+           "%s has been restored.\n"
+           "To fully remove %s, also manually remove %s.\n",
+           SKIDCFG_NAME, SETUP_EXE, SKIDCFG_NAME, SKIDCFG_EXE);
     return 0;
 }

@@ -1,14 +1,16 @@
 /* A cut down driver table: EGA and CGA, the speaker and silence.
  *
- *     copy examples\drvmin.h src\drvtab.h
+ * A fixture, not an example. Nothing here is worth copying for its own sake:
+ * a build offering two video modes and two sound options is of no use to
+ * anybody who has not deliberately decided they want exactly that.
  *
- * A build for one machine, which is the direction the table extends in that
- * the original could not go at all. Everything the game cannot do on that
- * machine is gone from both menus, so nobody can pick it by accident.
+ * What it is for is being the one table in the tree with entries missing, so
+ * that CI builds a third configuration from it:
  *
- * It is also what CI builds its second configuration from, because it is the
- * only file in the tree that proves the claim the whole design rests on: that
- * removing an entry is safe. Three things are meant to be read off it.
+ *     make selfcheck-min
+ *
+ * That is the only thing that exercises the claim the whole design rests on,
+ * that removing an entry is safe. Three things are meant to be read off it.
  *
  * The indices are not 0 and 1. EGA is still 2 and the speaker is still 1,
  * exactly as they are in the shipped table, so a SETUP.DAT written by any

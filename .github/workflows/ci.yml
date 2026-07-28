@@ -73,7 +73,7 @@ jobs:
       - name: Check formatting
         run: |
           clang-format-22 --dry-run --Werror --style=file \
-            src/*.c src/*.h test/*.c test/dos/*.c
+            src/*.c src/*.h test/*.c test/*.h test/dos/*.c
 
   build:
     strategy:
@@ -124,7 +124,7 @@ jobs:
       # It runs last because it overwrites src/drvtab.h.
       - name: Build against a cut down driver table
         run: |
-          cp examples/drvmin.h src/drvtab.h
+          cp test/drvmin.h src/drvtab.h
           ${{ matrix.cc }} $WARN -O2 -I src -o selfcheck-min \
             test/selfchk.c src/drivers.c src/setup.c
 
@@ -150,7 +150,7 @@ jobs:
                 -DSKIDCFG_SC55 -fsanitize=address,undefined \
                 -fno-omit-frame-pointer \
                 -o selfcheck-sc55 test/selfchk.c src/drivers.c src/setup.c
-          cp examples/drvmin.h src/drvtab.h
+          cp test/drvmin.h src/drvtab.h
           clang -std=c90 -pedantic-errors -Wall -Wextra -g -O1 -I src \
                 -fsanitize=address,undefined -fno-omit-frame-pointer \
                 -o selfcheck-min test/selfchk.c src/drivers.c src/setup.c

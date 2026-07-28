@@ -3,7 +3,7 @@
  * Edit this and nothing else. Entries can be added, removed and reordered
  * here, and the menus, the counts, the SETUP.DAT reader and the SETUP.DAT
  * writer all follow. One entry, the Roland SC-55 at the bottom, is here
- * already and switched off; examples/drvmin.h is a cut down table.
+ * already and switched off; test/drvmin.h is a cut down one.
  *
  * ------------------------------------------------------------------ the rows
  *
@@ -96,11 +96,22 @@
 
 /* --------------------------------------------------------------- video ---
  *
- * Best first, which is the order SETUP.EXE lists them in. A video entry can
- * be taken out but there is no seventh to put in: LOAD.EXE loads a header and
- * a code file per mode and a retail release ships CGA, EGA, MCGA and TDY and
- * nothing else. Removing the modes a particular machine cannot do is the
- * useful direction here.
+ * Best first, which is the order SETUP.EXE lists them in.
+ *
+ * Nothing here limits this half to five rows. What a retail release ships is a
+ * header and a code file for CGA, EGA, MCGA and TDY and nothing else, so those
+ * are the modes that can be offered today; the table, the menu and the writer
+ * would carry a sixth as readily as the sound half carries a seventh.
+ *
+ * What is not established is whether LOAD.EXE will load a mode name it does
+ * not already know. Its command line was read far enough to find /u, /s and
+ * the /h and /v flags, and no further. Establish that before writing an
+ * SVGA.HDR and an SVGA.COD, because it decides whether a new video mode is a
+ * row here or a patch to LOAD.EXE as well.
+ *
+ * The VGA row below is the shorter way in and the one to try first: LOAD.EXE
+ * already accepts that name, the entry already has an index and a command
+ * string, and it wants only a label, a help paragraph and the two files.
  */
 
 DRV_VIDEO(4, "load.exe /u MCGA  ", "(MCGA)", "MCGA/VGA graphics", "disk 'B'",
@@ -130,10 +141,15 @@ DRV_VIDEO(0, "load.exe /u CGA  ", "(CGA)", "CGA graphics", "disk 'A'",
 
 /* Never offered, and that is the original's doing rather than a decision made
  * here: the /v VGA entry is in both of SETUP.EXE's string tables and has no
- * menu record. It is unusable as well, because no retail release ships a
- * VGA.HDR and a VGA.COD to go with it. Kept with no label so that a SETUP.DAT
- * which already names it survives being read and written back. Having no menu
- * record, it has no help paragraph either. */
+ * menu record. Nothing can select it today either, because no retail release
+ * ships a VGA.HDR and a VGA.COD to go with it. Kept with no label so that a
+ * SETUP.DAT which already names it survives being read and written back, and
+ * with no help paragraph because it has no record to transcribe one from.
+ *
+ * Supply the two files and this row is one label away from being offered,
+ * which makes it the cheapest test of whether the video half extends at all.
+ * Give it a paragraph of your own at the same time; there is no original to
+ * copy for a mode the original never drew. */
 DRV_VIDEO(5, "load.exe /u VGA /v ", "(VGA)", NULL, NULL, NULL)
 
 /* --------------------------------------------------------------- sound --- */
@@ -203,7 +219,7 @@ DRV_SOUND(5, "/smt ", "(MT-32)", "Roland MT-32",
 DRV_SOUND(6, "/ssc ", "(SC-55)", "Roland SC-55",
           "Select if you have a\n"
           "Roland Sound Canvas on\n"
-          "the MPU-401 port.  It\n"
+          "the MPU-401 port. It\n"
           "uses the GS sound set,\n"
           "which a General MIDI\n"
           "module does not have.")

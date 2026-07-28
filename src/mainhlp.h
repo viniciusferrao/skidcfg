@@ -87,7 +87,7 @@ static const char *const main_help[MAIN_HELP_N] = {
      * a row that looks broken. */
     "This copies the game off\n"
     "its floppy disks onto a\n"
-    "hard disk.  skidcfg does\n"
+    "hard disk. SKIDCFG does\n"
     "not do that part: it\n"
     "sets up a game that is\n"
     "already installed, and\n"

@@ -6,14 +6,14 @@
  * original cannot quietly rewrite a command line naming a driver it has never
  * heard of.
  *
- *     SKIDCFG /INSTALL      SETUP.EXE becomes SETUP.ORG, this takes the name
- *     SKIDCFG /REMOVE       the reverse, exactly
+ *     SKIDCFG /I    SETUP.EXE becomes SETUP.ORG, this takes the name
+ *     SKIDCFG /U    the reverse, exactly
  *
- * The rule the whole file is built on is that /REMOVE has to put the directory
- * back the way it was found, so nothing here ever destroys anything. The
- * original is renamed, never overwritten and never deleted, and every refusal
- * below exists to keep it that way: no step runs unless the step that undoes
- * it will work.
+ * The rule the whole file is built on is that /U has to put the directory
+ * back the way it was found, so nothing here ever destroys anything.
+ * The original is renamed, never overwritten and never deleted, and every
+ * refusal below exists to keep it that way: no step runs unless the step that
+ * undoes it will work.
  */
 #ifndef INSTALL_H
 #define INSTALL_H
@@ -33,6 +33,6 @@ enum inst_state inst_state(void);
  * so a caller has nothing to add. self is argv[0]: DOS 3.0 and later put the
  * full path of the running program there, which is how this copies itself. */
 int inst_install(const char *self);
-int inst_remove(void);
+int inst_uninstall(void);
 
 #endif

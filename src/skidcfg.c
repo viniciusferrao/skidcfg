@@ -31,6 +31,7 @@
 #include "mainhlp.h"
 #include "scrn.h"
 #include "setup.h"
+#include "version.h"
 
 #if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
 #    define SKIDCFG_DOS 1
@@ -107,7 +108,7 @@ static const char FOOTER[] =
 static const char HELP_FOOTER[] = "Type any key to return to the menu";
 static const char NO_HELP[] = "No Help Available";
 
-static const char BANNER[] = "skidcfg - setup for Stunts 1.1";
+static const char BANNER[] = SKIDCFG_EXIT_BANNER;
 
 /* The three centred lines of the title box.
  *
@@ -120,19 +121,12 @@ static const char BANNER[] = "skidcfg - setup for Stunts 1.1";
  * "Version 1.0" and "Copyright (c) 1990 DSI" this names itself and its own
  * author, which is both the honest thing and the useful one: on a screen this
  * faithful, the title box is the only place that says which of the two
- * programs you are looking at.
- *
- * The author's name is spelt in ASCII on purpose. Code page 437 has both of
- * its accented letters, so "Vin\xA1" "cius Ferr\xE3o" would be right on a US
- * machine, and wrong on any of the others: a Brazilian DOS running code page
- * 850 draws A1h as a plain i but E3h as a paragraph sign, and 860, the
- * Portuguese page, disagrees with both. Nothing else on this screen depends on
- * the code page except the two footer arrows, and those are the same in every
- * page that matters. A name that renders everywhere beats one that is
- * typographically right in one country. */
+ * programs you are looking at. Both come from version.h, which is the only
+ * place a version appears and which explains why the name is spelt without
+ * its accents. */
 static const char TITLE_1[] = "\"Stunts\" Setup Program";
-static const char TITLE_2[] = "SKIDCFG: Version 1.0";
-static const char TITLE_3[] = "Copyleft (c) 2026 Vinicius Ferrao";
+static const char TITLE_2[] = SKIDCFG_TITLE_VERSION;
+static const char TITLE_3[] = SKIDCFG_TITLE_AUTHOR;
 
 /* ------------------------------------------------------------- keyboard -- */
 
@@ -386,50 +380,36 @@ static const char *brief_of(const struct drv_tab *t, int index)
     return o == NULL ? NULL : o->brief;
 }
 
-/* 1560h: back to black with the banner still on the top row and the cursor
- * under it, so that whatever DOS prints next reads as part of the same page. */
+/* 1560h, and it does what 1560h does and stops. Black screen, the line across
+ * row 0, the cursor under it at column 0 row 1, return. The original says
+ * nothing about what it wrote and neither does this: a setup program that
+ * worked has nothing to report, and the next thing on the screen should be the
+ * prompt.
+ *
+ * The one thing worth saying is said only when it applies. SETUP.EXE rebuilds
+ * line 2 from its own six drivers, so running it on a build that has a seventh
+ * leaves a file the game will not start on; this repairs that from line 1, and
+ * repairing somebody's file without telling them is worse than a line of
+ * output. It cannot fire on a file this program wrote. */
 static void report(const struct setup *s, int written)
 {
-    const struct drv_opt *vid = drv_find(&drv_video, s->video);
-    const struct drv_opt *snd = drv_find(&drv_sound, s->sound);
-
     scrn_close();
     scrn_blank(BANNER_ROW, 0, BANNER_ROW, SCRN_LAST_COL, SCRN_BLUE_BG);
     scrn_left(BANNER, 1, SCRN_LAST_COL, BANNER_ROW, SCRN_WHITE, SCRN_BLUE_BG);
     scrn_cursor(0, 1);
 
-    /* Both of these are about the file that was read rather than the one just
-     * written, and setup.c cannot set them together: a disagreement needs both
-     * lines to be readable, and falling back to the indices means one was not.
-     *
-     * The second is worth saying out loud because of what usually causes it.
-     * SETUP.EXE reads line 1 and rebuilds line 2 from its own six drivers, so
-     * running it on a build that has a seventh leaves line 1 naming the right
-     * driver and line 2 naming nothing at all, which is a file the game will
-     * not start on. Line 1 surviving is what lets this put it back. */
-    if (s->conflict) {
-        printf("\nThe %s read in disagreed with itself: its command line and "
-               "its\nsaved menu indices named different drivers.  The command "
-               "line won,\nbecause that is the one the game obeys.\n",
-               SETUP_PATH);
-    } else if (s->origin == SETUP_FROM_INDICES && written) {
-        printf("\nThe command line in %s could not be read.  The settings came "
-               "from\nthe saved indices on line 1 instead, and the file has "
-               "been rebuilt.\n",
-               SETUP_PATH);
-    } else if (s->origin == SETUP_FROM_INDICES) {
-        printf("\nThe command line in %s cannot be read.  What this program "
-               "offered\ncame from the saved indices on line 1 instead.  The "
-               "game will not\nstart until the file is rewritten: run this "
-               "again and choose Exit.\n",
-               SETUP_PATH);
-    }
-    if (!written || vid == NULL || snd == NULL) {
-        printf("\n%s not written.  Nothing changed.\n", SETUP_PATH);
+    if (s->origin != SETUP_FROM_INDICES) {
         return;
     }
-    printf("\n%s written.  STUNTS.COM will now run:\n\n    %s%s\n", SETUP_PATH,
-           vid->cmd, snd->cmd);
+    if (written) {
+        printf("\nThe command line in %s could not be read and has been "
+               "rebuilt\nfrom the indices on line 1.\n",
+               SETUP_PATH);
+    } else {
+        printf("\nThe command line in %s cannot be read. Run this again and "
+               "choose\nExit to rewrite it.\n",
+               SETUP_PATH);
+    }
 }
 
 /* ----------------------------------------------------------- command line --
@@ -438,22 +418,63 @@ static void report(const struct setup *s, int written)
  * that the original does not have, and the screen being the original's screen
  * is the point of most of this program; taking over the name is a thing you do
  * once from a DOS prompt, not a thing you do while setting up a game. */
-static int usage(const char *self)
+/* The banner and nothing else, which is what /VERSION is for. */
+static int version(void)
 {
-    printf("%s - setup for Stunts 1.1.\n\n"
-           "    SKIDCFG            set up the game in this directory\n"
-           "    SKIDCFG /INSTALL   take SETUP.EXE's place, keeping it as "
-           "SETUP.ORG\n"
-           "    SKIDCFG /REMOVE    put the original SETUP.EXE back\n\n"
-           "It reads and writes %s in the current directory, which is the "
-           "one\nLOAD.EXE is in.\n",
-           self, SETUP_PATH);
+    fputs(SKIDCFG_BANNER, stdout);
     return 0;
 }
 
-/* DOS switches, so / rather than -, and case does not matter. Both spellings
- * of each are accepted because both are what people type. */
-static int matches(const char *arg, const char *a, const char *b)
+/* The name to put in the usage, which is not always SKIDCFG: /I leaves a
+ * copy of this running as SETUP.EXE, and a help screen naming the other
+ * program would be a small thing to get wrong and a confusing one. DOS 3.0 and
+ * later give argv[0] as a full path, so take what follows the last separator;
+ * a drive letter counts as one. */
+static const char *prog_name(const char *path)
+{
+    const char *name = path;
+    const char *s;
+
+    if (path == NULL) {
+        return SKIDCFG_NAME;
+    }
+    for (s = path; *s != '\0'; s++) {
+        if (*s == '\\' || *s == '/' || *s == ':') {
+            name = s + 1;
+        }
+    }
+    return *name == '\0' ? SKIDCFG_NAME : name;
+}
+
+/* Two calls rather than one because C89 only guarantees 509 characters in a
+ * string literal and a compiler of the era may hold you to it. Neither is
+ * close, but a help screen is the thing that grows. */
+static int usage(const char *prog)
+{
+    version();
+    printf("\nusage:\n  %s [option]\n\n"
+           "With no option it behaves like the original SETUP.EXE\n\n",
+           prog);
+    fputs("options:\n"
+          "  /I   install SKIDCFG in place of SETUP.EXE\n"
+          "  /U   uninstall SKIDCFG and put the original SETUP.EXE back\n"
+          "  /V   show the version\n"
+          "  /?   show this help\n",
+          stdout);
+    return 0;
+}
+
+/* DOS switches, so / rather than -, and case does not matter.
+ *
+ * Any prefix of the name will do, which is what the brackets in the help mean:
+ * /I, /INS and /INSTALL are one option and the help says so without a sentence
+ * explaining it. No two names below share a first letter, so a prefix is never
+ * ambiguous; adding one that does would need this to say which wins.
+ *
+ * A leading - is taken as well and is not advertised. Nobody typing at a DOS
+ * prompt reaches for it, and anybody who does has come from somewhere it works
+ * and will not be surprised that it does. */
+static int opt_is(const char *arg, const char *name)
 {
     size_t i;
 
@@ -461,26 +482,16 @@ static int matches(const char *arg, const char *a, const char *b)
         return 0;
     }
     arg++;
-    for (i = 0; a[i] != '\0' || arg[i] != '\0'; i++) {
+    if (arg[0] == '\0') {
+        return 0;
+    }
+    for (i = 0; arg[i] != '\0'; i++) {
         int c = arg[i];
 
         if (c >= 'a' && c <= 'z') {
             c -= 'a' - 'A';
         }
-        if (c != a[i]) {
-            break;
-        }
-    }
-    if (a[i] == '\0' && arg[i] == '\0') {
-        return 1;
-    }
-    for (i = 0; b[i] != '\0' || arg[i] != '\0'; i++) {
-        int c = arg[i];
-
-        if (c >= 'a' && c <= 'z') {
-            c -= 'a' - 'A';
-        }
-        if (c != b[i]) {
+        if (c != name[i]) {
             return 0;
         }
     }
@@ -489,21 +500,26 @@ static int matches(const char *arg, const char *a, const char *b)
 
 static int option(int argc, char **argv)
 {
+    const char *prog = prog_name(argv[0]);
+    const char *a = argv[1];
+
     if (argc != 2) {
-        fprintf(stderr, "skidcfg: one option at a time.\n");
+        fprintf(stderr, "%s: one option at a time.\n", prog);
         return 2;
     }
-    if (matches(argv[1], "INSTALL", "I")) {
+    if (opt_is(a, "INSTALL")) {
         return inst_install(argv[0]);
     }
-    if (matches(argv[1], "REMOVE", "U") || matches(argv[1], "UNINSTALL", "R")) {
-        return inst_remove();
+    if (opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
+        return inst_uninstall();
     }
-    if (matches(argv[1], "?", "HELP") || matches(argv[1], "H", "?")) {
-        return usage(argv[0]);
+    if (opt_is(a, "VERSION")) {
+        return version();
     }
-    fprintf(stderr, "skidcfg: %s is not an option.  Try /? for the list.\n",
-            argv[1]);
+    if (opt_is(a, "?") || opt_is(a, "HELP")) {
+        return usage(prog);
+    }
+    fprintf(stderr, "%s: %s is not an option. Try /? for the list.\n", prog, a);
     return 2;
 }
 
@@ -565,7 +581,7 @@ int main(int argc, char **argv)
 
     if (written && setup_write(&s, SETUP_PATH) != 0) {
         scrn_close();
-        fprintf(stderr, "skidcfg: cannot write %s\n", SETUP_PATH);
+        fprintf(stderr, SKIDCFG_NAME ": cannot write %s\n", SETUP_PATH);
         return 1;
     }
     report(&s, written);

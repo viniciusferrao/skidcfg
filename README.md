@@ -12,17 +12,20 @@ same file, and takes its driver list from a table that can be changed.
 
 Copy `SKIDCFG.EXE` into the game directory, beside `LOAD.EXE`, and run it.
 
-    SKIDCFG            choose the video mode and the sound driver
-    SKIDCFG /INSTALL   take SETUP.EXE's place, keeping it as SETUP.ORG
-    SKIDCFG /REMOVE    put the original SETUP.EXE back
-    SKIDCFG /?         the same list
+    SKIDCFG.EXE [option]
 
-Arrow keys move the highlight, ENTER selects, F1 explains the highlighted
-option, ESC leaves without writing anything.
+With no option it behaves like the original SETUP.EXE. Arrow keys move the
+highlight, ENTER selects, F1 explains the highlighted option, ESC leaves
+without writing anything.
 
-Nothing else in the directory is touched. `/INSTALL` renames the original
-rather than replacing it, and `/REMOVE` puts the directory back exactly as it
-was; neither ever deletes `SETUP.EXE`.
+    /I   install SKIDCFG in place of SETUP.EXE
+    /U   uninstall SKIDCFG and put the original SETUP.EXE back
+    /V   show the version
+    /?   show this help
+
+Nothing else in the directory is touched. `/I` renames the original rather
+than replacing it, and `/U` puts the directory back exactly as it was;
+neither ever deletes `SETUP.EXE`.
 
 ## What it offers
 

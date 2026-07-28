@@ -38,7 +38,9 @@
  * see src/drvtab.h. It is in the table file because that is the only file
  * allowed to name a driver, and a preselected driver is a named one.
  *
- * Where the two indices came from, so the program can say so on screen. */
+ * Where the two indices came from. Only FROM_INDICES is worth a word on the
+ * screen, and skidcfg.c says it: it means the command line was unreadable and
+ * has been rebuilt out of line 1, which is a repair of somebody's file. */
 enum setup_origin {
     SETUP_FROM_CMDLINE, /* line 2, which is what the game obeys */
     SETUP_FROM_INDICES, /* line 1, line 2 being unreadable */
@@ -49,8 +51,14 @@ struct setup {
     int               video;
     int               sound;
     enum setup_origin origin;
-    int               conflict; /* line 1 and line 2 disagreed */
-    char              tail[SETUP_TAIL_N][SETUP_TAIL_MAX];
+    /* Line 1 and line 2 disagreed. Resolved here and not mentioned again: the
+     * command line wins because that is the one the game obeys, and the file
+     * goes back out with the two agreeing. Nothing is lost and nothing is
+     * asked of anybody, so there is nothing to print. Kept as a field because
+     * it is a fact about the file that was read, and the self check asserts
+     * the parser gets it right. */
+    int  conflict;
+    char tail[SETUP_TAIL_N][SETUP_TAIL_MAX];
 };
 
 void setup_default(struct setup *s);

@@ -20,9 +20,10 @@ rem either the MSVC build tools or a mingw-w64 installation for its headers and
 rem its linker.
 rem
 rem The drivers this program offers are src\drvtab.h and nothing else.
-rem that file to change them, or for the one driver that ships switched off:
+rem Edit that file to change them, or for the one driver that ships switched
+rem off:
 rem     set EXTRA=-DSKIDCFG_SC55
-rem before running this. examples\drvmin.h is a cut down table.
+rem before running this.
 
 setlocal
 

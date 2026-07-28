@@ -11,13 +11,13 @@ CFLAGS  ?= -std=c89 -pedantic -Wall -Wextra -O2
 #
 #     make EXTRA=-DSKIDCFG_SC55        the Roland SC-55 entry as well
 #
-# examples/drvmin.h is a cut down table, and what CI builds its second
-# configuration from.
+# test/drvmin.h is a cut down table with entries missing, and what CI builds
+# its third configuration from.
 EXTRA   ?=
 
 SRC      = src/drivers.c src/setup.c src/scrn.c src/install.c src/skidcfg.c
 HDR      = src/drivers.h src/drvtab.h src/mainhlp.h src/setup.h src/scrn.h \
-           src/install.h
+           src/install.h src/version.h
 
 # Where your Stunts installation is. Nothing is written into it except by
 # "make install".
@@ -51,14 +51,14 @@ selfcheck-sc55: test/selfchk.c src/drivers.c src/setup.c $(HDR)
 # whether the check passed or not.
 selfcheck-min: test/selfchk.c src/drivers.c src/setup.c $(HDR)
 	@cp src/drvtab.h drvtab.bak
-	@cp examples/drvmin.h src/drvtab.h
+	@cp test/drvmin.h src/drvtab.h
 	@$(CC) $(CFLAGS) -I src -o selfcheck-min test/selfchk.c \
 	       src/drivers.c src/setup.c && ./selfcheck-min; \
 	  rc=$$?; mv drvtab.bak src/drvtab.h; exit $$rc
 
 # Apply the house style. CLANG_FORMAT lets you point at a pinned build.
 CLANG_FORMAT ?= clang-format
-STYLED = src/*.c src/*.h test/*.c test/dos/*.c
+STYLED = src/*.c src/*.h test/*.c test/*.h test/dos/*.c
 
 format:
 	$(CLANG_FORMAT) -i --style=file $(STYLED)
