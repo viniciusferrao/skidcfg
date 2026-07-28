@@ -82,9 +82,17 @@ lint:
 	        || exit 1; \
 	done
 
+# What a release ships beside the binary, generated from README.md at the
+# tagged commit so the text in the archive cannot lag the text it documents.
+# 78 columns because that is what EDIT.COM reads comfortably, and CRLF because
+# the reader is on DOS.
+README.TXT: README.md tools/txtify.awk
+	awk -f tools/txtify.awk README.md | sed 's/$$/\r/' > $@
+
 clean:
-	rm -f skidcfg skidcfg.exe SKIDCFG.EXE selfcheck selfcheck.exe \
-	      selfcheck-sc55 selfcheck-min drvtab.bak src/*.o src/*.obj
+	rm -f skidcfg skidcfg.exe SKIDCFG.EXE SCCHECK.EXE selfcheck \
+	      selfcheck.exe selfcheck-sc55 selfcheck-min drvtab.bak \
+	      README.TXT src/*.o src/*.obj
 
 .PHONY: all install selfcheck selfcheck-sc55 selfcheck-min format \
         format-check lint clean

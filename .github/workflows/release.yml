@@ -1,0 +1,186 @@
+name: release
+
+# Builds SKIDCFG.EXE, generates README.TXT and packages the archive. Push a tag
+# to publish; run it by hand to rehearse without publishing.
+#
+# The binary is built with Open Watcom rather than with Microsoft C 5.10, and
+# that is worth being plain about. MSC 5.10 is the compiler the sources were
+# written against and DOSBUILD.BAT is still the period build, but it cannot be
+# installed on a runner, so a release built with it would be a file somebody
+# made on their own machine and asked everyone to trust. Watcom has an action,
+# so what ships is built in the open from the tagged commit. WCLBUILD.BAT is in
+# the tree and README.md names it: it is a documented path, not one only CI
+# knows about.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  binary:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: open-watcom/setup-watcom@v1
+        with:
+          version: '1.9'
+          target: dos
+
+      # WCLBUILD reads WATCOM, which the action above exported.
+      - name: Build
+        shell: cmd
+        run: |
+          call WCLBUILD.BAT
+          if not exist SKIDCFG.EXE exit /b 1
+          if not exist SCCHECK.EXE exit /b 1
+
+      - name: Report
+        shell: bash
+        run: ls -l SKIDCFG.EXE SCCHECK.EXE && sha256sum SKIDCFG.EXE SCCHECK.EXE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dos
+          path: |
+            SKIDCFG.EXE
+            SCCHECK.EXE
+          if-no-files-found: error
+
+  # The shipped binary's own self-check, run against the shipped binary.
+  #
+  # skidpack cannot do this for its DOS target and says so; skidcfg can, because
+  # the self-check needs no game data, no screen and no keyboard, and DOSBox
+  # runs on a Linux runner. So the thing that gets published is the thing that
+  # was tested, rather than a hosted build of the same sources.
+  check:
+    needs: binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dos, path: dos }
+
+      - name: Install DOSBox
+        run: sudo apt-get update && sudo apt-get install -y dosbox
+
+      - name: Run the self-check under DOS
+        run: |
+          set -e
+          mkdir -p run out
+          cp dos/SCCHECK.EXE run/
+          cat > dosbox.conf <<'EOF'
+          [sdl]
+          output = surface
+          [autoexec]
+          mount c run
+          mount l out
+          c:
+          SCCHECK > L:\CHK.TXT
+          exit
+          EOF
+          SDL_VIDEODRIVER=dummy dosbox -conf dosbox.conf -exit || true
+          echo "--- what the shipped binary says about itself ---"
+          cat out/CHK.TXT
+          grep -q "self-check passed" out/CHK.TXT
+          ! grep -q "^FAIL" out/CHK.TXT
+
+  package:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: dos, path: bin }
+
+      # SKIDCFG_VERSION is the only place a version is written, so a tag that
+      # disagrees with it would ship a binary printing the other number. Catch
+      # that here rather than in a bug report.
+      - name: Version
+        id: v
+        run: |
+          set -e
+          VER=$(sed -n 's/^#define SKIDCFG_VERSION "\(.*\)"/\1/p' src/version.h)
+          [ -n "$VER" ] || { echo "no SKIDCFG_VERSION in src/version.h"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG=${GITHUB_REF_NAME#v}
+            [ "$TAG" = "$VER" ] || {
+              echo "tag v$TAG disagrees with SKIDCFG_VERSION $VER in src/version.h"
+              exit 1; }
+          fi
+          # SKIDCF10.ZIP, from 1.0. DOS wants 8.3, and a version long enough to
+          # break it should say so here rather than ship an unopenable name.
+          DOSZIP="SKIDCF$(echo "$VER" | tr -d .)"
+          [ ${#DOSZIP} -le 8 ] || { echo "$DOSZIP exceeds 8.3"; exit 1; }
+          echo "ver=$VER"           >> "$GITHUB_OUTPUT"
+          echo "doszip=$DOSZIP.ZIP" >> "$GITHUB_OUTPUT"
+
+      # Generated from README.md at the tagged commit, so the text a release
+      # ships cannot lag the text it documents.
+      - name: Generate README.TXT
+        run: |
+          set -e
+          make README.TXT
+          # EDIT.COM reads 78 columns. Assert it, because the failure is silent:
+          # a long line wraps and the file merely looks bad on the machine that
+          # nobody building the release is using.
+          if sed 's/\r$//' README.TXT | awk 'length>78{exit 1}'; then
+            echo "README.TXT fits 78 columns: OK"
+          else
+            echo "README.TXT has lines past 78 columns:" >&2
+            sed 's/\r$//' README.TXT | awk 'length>78{printf "  %d (%d): %s\n", NR, length, $0}' >&2
+            exit 1
+          fi
+          file README.TXT
+
+      # LICENSE is not optional: MIT asks that the notice travel with every
+      # copy, and a binary is a copy.
+      #
+      # DRVBLOCK.md deliberately does not travel. Its tables do not survive
+      # being flattened to 78 columns, and the reader who wants it is writing a
+      # driver, which means a compiler and a browser and no trouble finding the
+      # repository. The README in here says where it is.
+      - name: Assemble
+        run: |
+          set -e
+          mkdir -p stage
+          cp LICENSE README.TXT bin/SKIDCFG.EXE bin/SCCHECK.EXE stage/
+          chmod +x stage/SKIDCFG.EXE stage/SCCHECK.EXE
+          (cd stage && zip -X -9 "../${{ steps.v.outputs.doszip }}" \
+                           LICENSE README.TXT SKIDCFG.EXE SCCHECK.EXE)
+          sha256sum "${{ steps.v.outputs.doszip }}" > SHA256SUMS
+
+      # Verification comes free twice over: SHA256SUMS for a modern machine, and
+      # the CRC-32 the ZIP format already stores per member, which is the same
+      # one PKZIP shipped in 1989. unzip -t checks the latter, so a reader on DOS
+      # with PKUNZIP -T is checking what was checked here.
+      - name: Verify
+        run: |
+          set -e
+          sha256sum -c SHA256SUMS
+          unzip -t "${{ steps.v.outputs.doszip }}"
+          unzip -l "${{ steps.v.outputs.doszip }}"
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.v.outputs.ver }}
+          path: |
+            ${{ steps.v.outputs.doszip }}
+            SHA256SUMS
+          if-no-files-found: error
+
+      # Only on a tag. A manual run does everything above and stops, which is
+      # what makes it useful as a rehearsal.
+      - name: Publish
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "skidcfg ${{ steps.v.outputs.ver }}" \
+            --notes-file .github/RELEASE_NOTES.md \
+            "${{ steps.v.outputs.doszip }}" \
+            SHA256SUMS

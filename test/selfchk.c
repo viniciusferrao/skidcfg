@@ -727,7 +727,7 @@ static int rows_in(const char *s)
     return n;
 }
 
-static const char BLOCK_OK[] = "SKIDCFGDRV1\n"
+static const char BLOCK_OK[] = "SKIDCFGDRV01\n"
                                "sound\n"
                                "label Roland SC-55\n"
                                "brief SC-55\n"
@@ -758,7 +758,7 @@ static void check_block(void)
 
     /* The invisible space rule, which is the whole reason this format has no
      * quoting: a trailing space nobody can see must not change any byte. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV1\n"
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
                             "sound   \n"
                             "label Roland SC-55  \n"
                             "brief   SC-55\n"
@@ -770,7 +770,7 @@ static void check_block(void)
 
     /* One long help line has to mean what several short ones mean, or where
      * somebody breaks their source would change the screen. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV1\n"
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
                             "sound\n"
                             "label Roland SC-55\n"
                             "brief SC-55\n"
@@ -782,7 +782,7 @@ static void check_block(void)
            strcmp(a.help, b.help) == 0, 1);
 
     /* A block assembled by hand in a DOS editor arrives with CRLF. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV1\r\n"
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\r\n"
                             "sound\r\n"
                             "label Roland SC-55\r\n"
                             "brief SC-55\r\n"
@@ -792,7 +792,7 @@ static void check_block(void)
     expect("CRLF is accepted", why == NULL, 1);
     expect("and changes nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
-    why = drv_blk_parse(&b, "SKIDCFGDRV1\n"
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
                             "; who made this, and under what licence\n"
                             "\n"
                             "sound\n"
@@ -805,7 +805,7 @@ static void check_block(void)
     expect("and change nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
     /* A video block carries the two keys a sound block must not. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV1\n"
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
                             "video\n"
                             "mode SVGA\n"
                             "disk B\n"
@@ -820,74 +820,99 @@ static void check_block(void)
 
     expect_refused("a block with no magic", "sound\nlabel X\nbrief X\n");
     expect_refused("a block that never ends",
-                   "SKIDCFGDRV1\nsound\nlabel X\nbrief X\n");
+                   "SKIDCFGDRV01\nsound\nlabel X\nbrief X\n");
     expect_refused("a block that is neither sound nor video",
-                   "SKIDCFGDRV1\nlabel X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDCFGDRV01\nlabel X\nbrief X\nSKIDCFGEND\n");
     expect_refused("a block that is both",
-                   "SKIDCFGDRV1\nsound\nvideo\nlabel X\nbrief X\n"
+                   "SKIDCFGDRV01\nsound\nvideo\nlabel X\nbrief X\n"
                    "SKIDCFGEND\n");
     expect_refused("a kind with a value on it",
-                   "SKIDCFGDRV1\nsound 6\nlabel X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDCFGDRV01\nsound 6\nlabel X\nbrief X\nSKIDCFGEND\n");
     expect_refused("a block with no label",
-                   "SKIDCFGDRV1\nsound\nbrief X\nSKIDCFGEND\n");
+                   "SKIDCFGDRV01\nsound\nbrief X\nSKIDCFGEND\n");
     expect_refused("a block with no brief",
-                   "SKIDCFGDRV1\nsound\nlabel X\nSKIDCFGEND\n");
+                   "SKIDCFGDRV01\nsound\nlabel X\nSKIDCFGEND\n");
     expect_refused("a label given twice",
-                   "SKIDCFGDRV1\nsound\nlabel X\nlabel Y\nbrief X\n"
+                   "SKIDCFGDRV01\nsound\nlabel X\nlabel Y\nbrief X\n"
                    "SKIDCFGEND\n");
-    expect_refused("a key this format does not have",
-                   "SKIDCFGDRV1\nsound\nlabel X\nbrief X\ncmd /ssc\n"
-                   "SKIDCFGEND\n");
-    expect_refused("an index, which skidcfg allocates",
-                   "SKIDCFGDRV1\nsound\nindex 6\nlabel X\nbrief X\n"
-                   "SKIDCFGEND\n");
+    /* A key this build does not know is ignored, not refused, so that a later
+     * format can add one and a driver carrying it still works here. Both of
+     * these are keys an earlier draft of the format had and this one does not,
+     * which is exactly the shape the problem takes. */
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\nsound\nlabel Roland SC-55\n"
+                            "brief SC-55\ncmd /ssc\nindex 6\n"
+                            "author somebody\n"
+                            "help Select if you have a Roland Sound\n"
+                            "help Canvas on the MPU-401 port.\n"
+                            "SKIDCFGEND\n");
+    expect("keys this build does not know are ignored", why == NULL, 1);
+    expect("and the rest of the block is read as if they were not there",
+           memcmp(&a, &b, sizeof a) == 0, 1);
+
+    /* Which must not have cost the safety net: a required key misspelt is
+     * still a refusal, and for the reason that reads best. */
+    expect_refused("a misspelt required key",
+                   "SKIDCFGDRV01\nsound\nlabl X\nbrief X\nSKIDCFGEND\n");
+
+    /* The keys are English words and a help paragraph is English, so they meet.
+     * They cannot collide: a key is only a key at the start of a line, and
+     * every line of a paragraph carries its own. */
+    why = drv_blk_parse(&b, "SKIDCFGDRV01\nsound\nlabel X\nbrief X\n"
+                            "help The sound and video label on this card\n"
+                            "help needs no help; brief mode disk SKIDCFGEND\n"
+                            "SKIDCFGEND\n");
+    expect("a paragraph made of this format's own key words is accepted",
+           why == NULL, 1);
+    expect_str("and survives whole", b.help,
+               "The sound and video label\non this card needs no\n"
+               "help; brief mode disk\nSKIDCFGEND");
 
     /* The brackets are the screen's. Doubling them up silently would put
      * ((SC-55)) on the main menu. */
     expect_refused("a brief with the brackets already on it",
-                   "SKIDCFGDRV1\nsound\nlabel X\nbrief (SC-55)\n"
+                   "SKIDCFGDRV01\nsound\nlabel X\nbrief (SC-55)\n"
                    "SKIDCFGEND\n");
 
     /* Exactly at the limit is a row, one over is a refusal. Both, because a
      * check that only proves the refusal would pass with an off-by-one that
      * rejected a label somebody is entitled to. */
     expect("a label of exactly the sound menu's 31 is accepted",
-           drv_blk_parse(&b, "SKIDCFGDRV1\nsound\n"
+           drv_blk_parse(&b, "SKIDCFGDRV01\nsound\n"
                              "label 0123456789012345678901234567890\n"
                              "brief X\nSKIDCFGEND\n") == NULL,
            1);
     expect_refused("a label one over it",
-                   "SKIDCFGDRV1\nsound\n"
+                   "SKIDCFGDRV01\nsound\n"
                    "label 01234567890123456789012345678901\n"
                    "brief X\nSKIDCFGEND\n");
     expect_refused("a label that fits the sound menu but not the video one",
-                   "SKIDCFGDRV1\nvideo\nmode SVGA\n"
+                   "SKIDCFGDRV01\nvideo\nmode SVGA\n"
                    "label 0123456789012345678901234\n"
                    "brief X\nSKIDCFGEND\n");
     expect("a brief of exactly 21 is accepted",
            drv_blk_parse(&b,
-                         "SKIDCFGDRV1\nsound\nlabel X\n"
+                         "SKIDCFGDRV01\nsound\nlabel X\n"
                          "brief 012345678901234567890\nSKIDCFGEND\n") == NULL,
            1);
     expect_refused("a brief one over 21",
-                   "SKIDCFGDRV1\nsound\nlabel X\n"
+                   "SKIDCFGDRV01\nsound\nlabel X\n"
                    "brief 0123456789012345678901\nSKIDCFGEND\n");
     expect_refused("mode on a sound block",
-                   "SKIDCFGDRV1\nsound\nmode SVGA\nlabel X\nbrief X\n"
+                   "SKIDCFGDRV01\nsound\nmode SVGA\nlabel X\nbrief X\n"
                    "SKIDCFGEND\n");
     expect_refused("disk on a sound block",
-                   "SKIDCFGDRV1\nsound\ndisk A\nlabel X\nbrief X\n"
+                   "SKIDCFGDRV01\nsound\ndisk A\nlabel X\nbrief X\n"
                    "SKIDCFGEND\n");
     expect_refused("a video block with no mode",
-                   "SKIDCFGDRV1\nvideo\nlabel X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDCFGDRV01\nvideo\nlabel X\nbrief X\nSKIDCFGEND\n");
     expect_refused("a disk that is not A or B",
-                   "SKIDCFGDRV1\nvideo\nmode SVGA\ndisk C\nlabel X\n"
+                   "SKIDCFGDRV01\nvideo\nmode SVGA\ndisk C\nlabel X\n"
                    "brief X\nSKIDCFGEND\n");
 
     /* A word wider than the window cannot be broken anywhere, so it is a
      * refusal rather than a row that runs off into the desktop. */
     expect_refused("a help word wider than the window",
-                   "SKIDCFGDRV1\nsound\nlabel X\nbrief X\n"
+                   "SKIDCFGDRV01\nsound\nlabel X\nbrief X\n"
                    "help Supercalifragilisticexpialidocious\n"
                    "SKIDCFGEND\n");
 
@@ -919,10 +944,10 @@ static void check_block(void)
         memset(image, 0, sizeof image);
         memcpy(image + 20, DRV_BLK_MAGIC, strlen(DRV_BLK_MAGIC));
         expect("the magic is found in a buffer full of zeros",
-               (int)drv_blk_find(image, (long)sizeof image), 20);
+               drv_blk_find(image, (int)sizeof image), 20);
         memset(image, 0, sizeof image);
         expect("and a buffer without it says so",
-               (int)drv_blk_find(image, (long)sizeof image), -1);
+               drv_blk_find(image, (int)sizeof image), -1);
     }
 }
 
@@ -972,15 +997,35 @@ static void check_merge(void)
            drv_find(st, o->index) == o, 1);
 
     /* A second driver must not be handed the first one's number. */
-    drv_scan_offer("SKIDCFGDRV1\nsound\nlabel Gravis\nbrief GUS\n"
+    drv_scan_offer("SKIDCFGDRV01\nsound\nlabel Gravis\nbrief GUS\n"
                    "SKIDCFGEND\n",
                    "GU15.DRV");
     expect("a second block becomes a second row", st->n, before + 2);
     expect_str("with its own switch", last_of(st)->cmd, "/sgu ");
     expect("and its own index", last_of(st)->index != o->index, 1);
 
-    /* LOAD.EXE turns /sxx into XX15.DRV, so a driver named anything else
-     * cannot be reached by any switch and must not be offered. */
+    /* A digit is as good as a letter in the two characters, which is measured:
+     * M015.DRV answers to /sm0. It matters because two characters is all there
+     * is, so a scheme that numbers its drivers has nowhere else to put the
+     * number. */
+    drv_scan_reset();
+    drv_scan_offer("SKIDCFGDRV01\nsound\nlabel Canvas and Blaster\n"
+                   "brief SC+SB\nSKIDCFGEND\n",
+                   "M015.DRV");
+    expect("a prefix with a digit in it is a driver like any other",
+           drv_scan_sound()->n, drv_sound.n + 1);
+    expect_str("and its switch is derived the same way",
+               last_of(drv_scan_sound())->cmd, "/sm0 ");
+
+    /* LOAD.EXE reads exactly two characters after /s and discards the rest, so
+     * a longer name is not merely unsupported: /sscsb loads SC15.DRV while
+     * looking like it asks for something else. A driver named that way is
+     * unreachable and must not be offered. */
+    drv_scan_reset();
+    drv_scan_offer(BLOCK_OK, "SCSB15.DRV");
+    expect("a name too long for any switch is skipped", drv_scan_skipped(), 1);
+    expect("and adds no row", drv_scan_sound()->n, drv_sound.n);
+
     drv_scan_reset();
     drv_scan_offer(BLOCK_OK, "SOUNDCRD.DRV");
     expect("a driver whose name no switch could reach is skipped",
@@ -993,13 +1038,13 @@ static void check_merge(void)
     expect("a sound block in LOAD.EXE is skipped", drv_scan_skipped(), 1);
 
     drv_scan_reset();
-    drv_scan_offer("SKIDCFGDRV1\nvideo\nmode SVGA\nlabel SVGA graphics\n"
+    drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\nlabel SVGA graphics\n"
                    "brief SVGA\nSKIDCFGEND\n",
                    "SV15.DRV");
     expect("a video block in a .DRV is skipped", drv_scan_skipped(), 1);
 
     drv_scan_reset();
-    drv_scan_offer("SKIDCFGDRV1\nvideo\nmode SVGA\ndisk B\n"
+    drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\ndisk B\n"
                    "label SVGA graphics\nbrief SVGA\nSKIDCFGEND\n",
                    "LOAD.EXE");
     vt = drv_scan_video();
@@ -1011,17 +1056,52 @@ static void check_merge(void)
     expect("its index is above every video index the original shipped with",
            o->index >= 5, 1);
 
+    /* A mode needs the .COD its name points at, the same as a driver needs its
+     * file: without it the game stops with "Unable to size SVGA.hdr." rather
+     * than starting. The .COD is worked out from the fragment rather than
+     * declared, so this is also what says that derivation happened. */
+    expect_str("and it needs the .COD its mode names", o->needs, "SVGA.COD");
+
+    /* Every stock mode's file has to be here first, or all of them want one
+     * that is not and the guard against emptying a menu keeps the lot. */
+    for (i = 0; i < vt->n; i++) {
+        if (vt->opt[i].needs != NULL) {
+            write_text(vt->opt[i].needs, "");
+        }
+    }
+    remove("SVGA.COD");
+    drv_scan_finish();
+    expect("a mode whose .COD is not here is not offered", o->hidden, 1);
+    expect("while the ones whose files are here still are",
+           drv_rows(vt) >= drv_rows(&drv_video), 1);
+
+    write_text("SVGA.COD", "");
+    drv_scan_finish();
+    expect("and it is offered once the file appears", o->hidden, 0);
+
+    for (i = 0; i < vt->n; i++) {
+        if (vt->opt[i].needs != NULL) {
+            remove(vt->opt[i].needs);
+        }
+    }
+
     /* The menu runs out of screen at ten rows, and the eleventh has to be
-     * refused with a reason rather than drawn off the bottom. */
+     * refused with a reason rather than drawn off the bottom.
+     *
+     * More offers than the menu could hold even if it started empty, because
+     * how many rows a build starts with is the build's business: eight was
+     * enough against the shipped six and exactly filled the menu against
+     * test/drvmin.h's two, so nothing was refused and the check passed by
+     * doing nothing. */
     drv_scan_reset();
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < DRV_ROWS_MAX + 2; i++) {
         char blk[160];
         char name[16];
 
         sprintf(name, "X%c15.DRV", (char)('a' + i));
         sprintf(blk,
-                "SKIDCFGDRV1\nsound\nlabel Card %d\nbrief C%d\nSKIDCFGEND\n", i,
-                i);
+                "SKIDCFGDRV01\nsound\nlabel Card %d\nbrief C%d\nSKIDCFGEND\n",
+                i, i);
         drv_scan_offer(blk, name);
     }
     expect("the menu stops at ten rows", drv_rows(drv_scan_sound()),
@@ -1042,46 +1122,108 @@ static void check_merge(void)
  * The files here are empty and named after the stock drivers. Nothing reads
  * their contents; being there is the whole of what is being tested.
  */
+/* Every file this build's table asks for, created empty or removed. Driven off
+ * the table rather than off a list of names, because a build is free to change
+ * the table and this check has to hold of whatever it finds: the first version
+ * of it named the four stock drivers and went red the moment the SC-55 entry
+ * was switched on and a seventh row wanted SC15.DRV. */
+static void drivers_on_disk(int present)
+{
+    int i;
+
+    for (i = 0; i < drv_sound.n; i++) {
+        const char *needs = drv_sound.opt[i].needs;
+
+        if (needs == NULL) {
+            continue;
+        }
+        if (present) {
+            write_text(needs, "");
+        } else {
+            remove(needs);
+        }
+    }
+}
+
+/* How many rows of the built-in table would go if this one file did. More than
+ * one is not hypothetical: Ad Lib and Sound Blaster both need AD15.DRV. */
+static int rows_needing(const char *file)
+{
+    int n = 0;
+    int i;
+
+    for (i = 0; i < drv_sound.n; i++) {
+        if (drv_sound.opt[i].label != NULL && drv_sound.opt[i].needs != NULL &&
+            strcmp(drv_sound.opt[i].needs, file) == 0) {
+            n++;
+        }
+    }
+    return n;
+}
+
 static void check_missing(void)
 {
     const struct drv_tab *st;
+    const char           *victim = NULL;
+    const struct drv_opt *gone = NULL;
     int                   full;
+    int                   share;
+    int                   i;
 
     printf("\n--    rows whose driver is not on the disk\n");
 
-    write_text("PC15.DRV", "");
-    write_text("TD15.DRV", "");
-    write_text("AD15.DRV", "");
-    write_text("MT15.DRV", "");
+    for (i = 0; i < drv_sound.n; i++) {
+        if (drv_sound.opt[i].label != NULL && drv_sound.opt[i].needs != NULL) {
+            victim = drv_sound.opt[i].needs;
+        }
+    }
+    if (victim == NULL) {
+        printf("--    this table's rows need no driver files, so there is\n"
+               "--    nothing here to check\n");
+        return;
+    }
+
+    drivers_on_disk(1);
     drv_scan_reset();
     drv_scan_finish();
     st = drv_scan_sound();
     full = drv_rows(st);
-    expect("with every stock driver present the menu is whole",
-           full == drv_rows(&drv_sound), 1);
+    expect("with every driver the table names present, the menu is whole", full,
+           drv_rows(&drv_sound));
 
-    remove("MT15.DRV");
+    share = rows_needing(victim);
+    remove(victim);
     drv_scan_reset();
     drv_scan_finish();
-    expect("taking one away takes one row off the menu", drv_rows(st),
-           full - 1);
-    expect("but the entry is still in the table", drv_find(st, 5) != NULL, 1);
-    expect("so a SETUP.DAT naming it still reads", drv_find(st, 5)->hidden, 1);
+    /* A table can be small enough that one file carries the whole menu.
+     * test/drvmin.h is: both its sound rows are the PC speaker driver, one of
+     * them with the no-sound flag. Emptying the menu is worse than leaving a
+     * row on it that cannot work, so nothing is hidden and the game gets to
+     * say what is wrong. */
+    if (share >= full) {
+        expect("a file every row needs does not empty the menu", drv_rows(st),
+               full);
+    } else {
+        expect("taking one file away takes every row that needed it",
+               drv_rows(st), full - share);
 
-    /* Ad Lib and Sound Blaster share AD15.DRV, which is measured rather than
-     * assumed: /ssb ignores an SB15.DRV put beside it. So one file going
-     * missing has to take two rows with it. */
-    remove("AD15.DRV");
-    drv_scan_reset();
-    drv_scan_finish();
-    expect("one file two rows depend on takes both", drv_rows(st), full - 3);
+        for (i = 0; i < st->n; i++) {
+            if (st->opt[i].needs != NULL &&
+                strcmp(st->opt[i].needs, victim) == 0) {
+                gone = &st->opt[i];
+            }
+        }
+        expect("the entry is still in the table", gone != NULL, 1);
+        if (gone != NULL) {
+            expect("so a SETUP.DAT naming it still reads", gone->hidden, 1);
+            expect("and it can still be found by index",
+                   drv_find(st, gone->index) == gone, 1);
+        }
+    }
 
     /* With nothing left to offer, hiding stops rather than leaving a window
      * with no rows in it. */
-    remove("PC15.DRV");
-    remove("TD15.DRV");
-    remove("AD15.DRV");
-    remove("MT15.DRV");
+    drivers_on_disk(0);
     drv_scan_reset();
     drv_scan_finish();
     expect("an install with no drivers at all hides nothing", drv_rows(st),

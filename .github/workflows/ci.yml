@@ -6,23 +6,35 @@ name: build
 # one, and each catches things the other does not.
 #
 # The self-check is the reason this works. src/setup.c has no console anywhere
-# in it, so the whole SETUP.DAT format can be written and read back on a host
-# with no DOS, no screen and no keyboard. It also checks the two things about
-# the screen that are decided in the tables rather than on it: the order of the
-# two menus and whether a help paragraph fits the window F1 opens.
+# in it, and src/drvblk.c opens no files, so the whole SETUP.DAT format and the
+# whole driver block format can be exercised on a host with no DOS, no screen
+# and no keyboard. src/drvscan.c compiles there too and finds nothing, which is
+# what keeps the merging and the index allocation under a hosted compiler.
 #
 # Everything is run three times: against the shipped table, against it with the
 # SC-55 entry switched on, and against a cut down table with entries removed. A
 # derived count and a derived menu order are only interesting when the table is
 # not the shape they were written against, and removing an entry is the case
 # the whole design rests on being safe.
+#
+# Every job goes through the Makefile rather than spelling the sources out.
+# They were spelled out once, and adding src/drvblk.c and src/drvscan.c to the
+# three build files and not to this one turned the whole matrix red. There is
+# one list now and it is in the Makefile.
 on: [push, pull_request]
+
+env:
+  WARN: >-
+    -std=c90 -pedantic-errors -Wall -Wextra -Wshadow -Wcast-qual
+    -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings
 
 jobs:
   # cppcheck reasons about the whole translation unit rather than one
   # expression at a time, so it reaches things -Wall cannot. GCC's analyzer
   # walks execution paths, which is where the fopen/fclose pairs in setup.c and
-  # the border buffer in scrn.c would show up if either were wrong.
+  # drvscan.c, and the border buffer in scrn.c, would show up if any were
+  # wrong. Both are the "lint" target, so what CI checks and what a developer
+  # runs before pushing are the same thing.
   analyze:
     runs-on: ubuntu-latest
     steps:
@@ -31,27 +43,13 @@ jobs:
       - name: Install
         run: sudo apt-get update && sudo apt-get install -y cppcheck
 
-      - name: cppcheck
-        run: |
-          cppcheck --std=c89 --enable=warning,performance,portability \
-                   --inline-suppr --error-exitcode=1 \
-                   --suppress=missingIncludeSystem \
-                   src/ test/
-
-      # One file at a time: -c with several inputs and a single -o is an error.
-      #
-      # test/dos/ is deliberately not in this glob. What lives there needs
-      # dos.h and an _interrupt keyword, so a hosted compiler cannot read it at
-      # all; that is why it is a directory rather than a name skipped here, and
-      # why the next instrument needs no change to this file. It is formatted
-      # with everything else and built by hand under DOS.
-      - name: GCC analyzer
-        run: |
-          for f in src/*.c test/*.c; do
-            gcc -std=c90 -pedantic-errors -Wall -Wextra -Wshadow -Wcast-qual \
-                -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes \
-                -Wwrite-strings -fanalyzer -O2 -I src -c "$f" -o /dev/null
-          done
+      # test/dos/ is deliberately outside this. What lives there needs dos.h
+      # and an _interrupt keyword, so a hosted compiler cannot read it at all;
+      # that is why it is a directory rather than a name skipped somewhere, and
+      # why the next instrument added there needs no change here. It is
+      # formatted with everything else and built by hand under DOS.
+      - name: cppcheck and the GCC analyzer
+        run: make lint
 
   # Blocking, because the tree conforms. The version is pinned: clang-format's
   # options and their defaults change between majors, so an unpinned formatter
@@ -71,9 +69,7 @@ jobs:
           sudo apt-get install -y clang-format-22
 
       - name: Check formatting
-        run: |
-          clang-format-22 --dry-run --Werror --style=file \
-            src/*.c src/*.h test/*.c test/*.h test/dos/*.c
+        run: make format-check CLANG_FORMAT=clang-format-22
 
   build:
     strategy:
@@ -82,10 +78,6 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         cc: [gcc, clang]
     runs-on: ${{ matrix.os }}
-    env:
-      WARN: >-
-        -std=c90 -pedantic-errors -Wall -Wextra -Wshadow -Wcast-qual
-        -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings
     steps:
       - uses: actions/checkout@v4
 
@@ -94,71 +86,46 @@ jobs:
       # is built anyway, because that is what keeps four compilers reading the
       # part of the tree the self-check does not link.
       - name: Build (strict C90)
-        run: |
-          ${{ matrix.cc }} $WARN -O2 -I src -o skidcfg \
-            src/drivers.c src/setup.c src/scrn.c src/install.c src/skidcfg.c
-          ${{ matrix.cc }} $WARN -O2 -I src -o selfcheck \
-            test/selfchk.c src/drivers.c src/setup.c
+        run: make skidcfg CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
       - name: Self-check
-        run: ./selfcheck
+        run: make selfcheck CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
       # With the SC-55 entry switched on, which is the build a project shipping
       # that driver makes. Seven sound drivers rather than six, so the derived
       # count and the derived menu order are exercised against a table that is
       # not the shape they were written against.
-      - name: Build with the SC-55 driver
-        run: |
-          ${{ matrix.cc }} $WARN -O2 -I src -DSKIDCFG_SC55 -o selfcheck-sc55 \
-            test/selfchk.c src/drivers.c src/setup.c
-          ${{ matrix.cc }} $WARN -O2 -I src -DSKIDCFG_SC55 -o skidcfg-sc55 \
-            src/drivers.c src/setup.c src/scrn.c src/install.c src/skidcfg.c
-
-      - name: Self-check with it
-        run: ./selfcheck-sc55
+      - name: Self-check with the SC-55 entry
+        run: make selfcheck-sc55 CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
       # And against a table with entries taken out, which is the check that
       # removing one is safe: the indices that remain must not have moved.
       # Nothing in the sources is special cased for it, so this is what says
       # the tree is table driven rather than driven by the shipped table.
-      # It runs last because it overwrites src/drvtab.h.
-      - name: Build against a cut down driver table
-        run: |
-          cp test/drvmin.h src/drvtab.h
-          ${{ matrix.cc }} $WARN -O2 -I src -o selfcheck-min \
-            test/selfchk.c src/drivers.c src/setup.c
-
-      - name: Self-check against it
-        run: ./selfcheck-min
+      # It runs last because it rewrites src/drvtab.h, and puts it back.
+      - name: Self-check against a cut down driver table
+        run: make selfcheck-min CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
   # setup.c parses text somebody hand edited and writes fixed size buffers back
-  # out, so the interesting failures are the ones a static pass cannot see. The
-  # self-check feeds it truncated files, files with nothing usable in them and
-  # indices outside the tables, all in its own process, so the sanitizers watch
-  # the refusal paths as well as the good ones.
+  # out, and drvblk.c parses text somebody put inside a binary. The interesting
+  # failures in both are the ones a static pass cannot see. The self-check
+  # feeds them truncated files, files with nothing usable in them, indices
+  # outside the tables and a few dozen malformed blocks, all in its own
+  # process, so the sanitizers watch the refusal paths as well as the good
+  # ones.
   sanitize:
     runs-on: ubuntu-latest
+    env:
+      SAN: >-
+        -std=c90 -pedantic-errors -Wall -Wextra -g -O1
+        -fsanitize=address,undefined -fno-omit-frame-pointer
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build with ASan and UBSan
-        run: |
-          clang -std=c90 -pedantic-errors -Wall -Wextra -g -O1 -I src \
-                -fsanitize=address,undefined -fno-omit-frame-pointer \
-                -o selfcheck test/selfchk.c src/drivers.c src/setup.c
-          clang -std=c90 -pedantic-errors -Wall -Wextra -g -O1 -I src \
-                -DSKIDCFG_SC55 -fsanitize=address,undefined \
-                -fno-omit-frame-pointer \
-                -o selfcheck-sc55 test/selfchk.c src/drivers.c src/setup.c
-          cp test/drvmin.h src/drvtab.h
-          clang -std=c90 -pedantic-errors -Wall -Wextra -g -O1 -I src \
-                -fsanitize=address,undefined -fno-omit-frame-pointer \
-                -o selfcheck-min test/selfchk.c src/drivers.c src/setup.c
-
-      - name: Self-check under the sanitizers
+      - name: Self-check under ASan and UBSan
         run: |
           export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
           export ASAN_OPTIONS=halt_on_error=1
-          ./selfcheck
-          ./selfcheck-sc55
-          ./selfcheck-min
+          make selfcheck CC=clang CFLAGS="$SAN"
+          make selfcheck-sc55 CC=clang CFLAGS="$SAN"
+          make selfcheck-min CC=clang CFLAGS="$SAN"

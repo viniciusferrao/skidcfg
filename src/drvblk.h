@@ -5,7 +5,7 @@
  * rebuilding this one. DRVBLOCK.md is the format and the reasoning; this is
  * the half that reads it.
  *
- *     SKIDCFGDRV1
+ *     SKIDCFGDRV01
  *     sound
  *     label Roland SC-55
  *     brief SC-55
@@ -32,10 +32,16 @@
 
 #include "drivers.h"
 
-/* The magic is a whole line and carries its own version, so a later format
- * uses a different one and this build skips a block it would misread rather
- * than guessing at it. */
-#define DRV_BLK_MAGIC "SKIDCFGDRV1"
+/* The magic is a whole line and carries its own version, so a later format uses
+ * a different one and this build skips a block it would misread rather than
+ * guessing at it.
+ *
+ * Two digits rather than one, and not because one would run out: the magic is a
+ * string and versions here are identities rather than numbers, so a reader
+ * matches the whole thing or skips, and nothing ever compares two of them. It
+ * is for reading. In a hex dump SKIDCFGDRV1 leaves you wondering whether the 1
+ * is a version or the tail of a name, and 01 beside a later 02 does not. */
+#define DRV_BLK_MAGIC "SKIDCFGDRV01"
 #define DRV_BLK_END "SKIDCFGEND"
 
 /* Bounds on what a block may contain. The first four are the screen's and are
@@ -68,8 +74,13 @@ struct drv_blk {
 };
 
 /* Where DRV_BLK_MAGIC starts in a buffer, or -1. The buffer is bytes and not
- * a string: a driver is a binary and has zeros all through it. */
-long drv_blk_find(const char *buf, long len);
+ * a string: a driver is a binary and has zeros all through it.
+ *
+ * int rather than long on both counts, and that is a decision about a 16-bit
+ * CPU rather than a limit anybody meets: a caller reads a file in chunks and
+ * hands over one at a time, and a long index would put the runtime's 32-bit
+ * helpers in the middle of a loop that runs once per byte of the game. */
+int drv_blk_find(const char *buf, int len);
 
 /* Read one block. text starts at the magic and is NUL terminated; anything
  * past DRV_BLK_END is ignored, so the caller may hand over the rest of the

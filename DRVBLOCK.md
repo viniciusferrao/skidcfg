@@ -18,7 +18,7 @@ drivers in conflict.
 ## The block
 
 ```
-SKIDCFGDRV1
+SKIDCFGDRV01
 sound
 label Roland SC-55
 brief SC-55
@@ -60,6 +60,20 @@ has whitespace that matters. Where it does matter, `skidcfg` puts it there.
 Keys may come in any order, except that `help` lines are read in the order they
 appear. Giving a key twice is an error, not an override. `help` is the one key
 meant to be repeated, and repeating it is purely so your source stays readable.
+
+**A key is only a key at the start of a line.** The keys are ordinary English
+words and a help paragraph is ordinary English, so they meet constantly; they
+cannot collide, because every line of a paragraph carries its own `help` and
+what follows it is text to the end of the line. This is a valid block and means
+what it looks like it means:
+
+```
+help The sound and video label on this card
+help needs no help; brief mode disk SKIDCFGEND
+```
+
+Even the terminator is safe there: `SKIDCFGEND` ends the block only on a line
+of its own.
 
 Write `brief` as a bare name. **The brackets are `skidcfg`'s**, the same as the
 window border and the highlight are: they are how that screen has drawn a
@@ -117,7 +131,7 @@ and there is no limit on how many there are beyond the size of the block, so
 the block is the natural place for whoever made the driver to sign it:
 
 ```
-SKIDCFGDRV1
+SKIDCFGDRV01
 ; SC15.DRV - Roland Sound Canvas driver for Stunts 1.1
 ; Copyleft (c) 2026 Vinicius Ferrao. MIT licence.
 ; https://github.com/viniciusferrao/skidsc55
@@ -150,12 +164,45 @@ they are claiming.
 ## What you do not write, and why
 
 **Not the command line switch.** `LOAD.EXE` derives the driver's filename from
-the switch: `/sxx` loads `XX15.DRV`, for any two letters. That was measured,
-not assumed. `SC15.DRV` copied to `ZZ15.DRV` and asked for as `/szz` plays
-exactly as `/ssc` does, and produces silence the moment the file is removed. So
-your driver's switch is not a choice, it is your filename, and `skidcfg` works
-it out. Two drivers cannot propose the same switch, because two files cannot
-have the same name in one directory.
+the switch: `/sxx` loads `XX15.DRV`. So your driver's switch is not a choice, it
+is your filename, and `skidcfg` works it out. Two drivers cannot propose the
+same switch, because two files cannot share a name in one directory.
+
+**Either character may be a letter or a digit, in any order.** Measured on both
+halves, the game loading the file and `skidcfg` offering the row: `SC15.DRV`
+copied to `ZZ15.DRV` answers to `/szz` and goes silent the moment the file is
+removed, and `M015.DRV`, `0415.DRV`, `4X15.DRV`, `7E15.DRV` and `X415.DRV` all
+answer to their own switch. A name beginning with a digit is a perfectly good
+driver name, which matters because two characters is the whole namespace and a
+scheme that wants to number its drivers has nowhere else to put the number.
+
+**Exactly two characters**, and this is the one place the format is unforgiving,
+because the game is. `LOAD.EXE` reads two after `/s` and discards the rest, so
+`/sscsb` does not fail: it loads `SC15.DRV` while looking like it asks for
+something else. Measured by removing `SC15.DRV`, at which point `/sscsb` went
+silent rather than falling back to the `SCSB15.DRV` sitting beside it. A driver
+named `SCSB15.DRV` can never be reached, so `skidcfg` refuses to put one on a
+menu and says why.
+
+Two is also all the voice banks allow. They are `<prefix>SKIDMS.VCE` and
+`SKIDMS` is six characters, so `SCSKIDMS.VCE` is exactly the eight that 8.3
+permits and a three character prefix could not name its own music bank. The
+limit is over-determined; do not design around getting past it.
+
+A name is therefore an identity and not a description — `CB15.DRV` or
+`M015.DRV`, whatever is free — and the description is what `label` and `brief`
+are for. They were never required to be the same thing.
+
+**Try a prefix before you commit to it.** `LOAD.EXE` knows some switches
+already and overrides the derivation for those, which is what `SB` is: `/ssb`
+loads `AD15.DRV`, and an `SB15.DRV` put beside it is never opened. There is no
+way to know from the outside how many others are like that, so the only honest
+test is to put your driver under the name, remove anything it might fall back
+to, and check that the game plays it.
+
+Taken by the drivers the game ships: `PC`, `AD`, `MT`, `TD`. Taken by
+skidsc55: `SC`. Spoken for by `LOAD.EXE` and unusable: `SB`. Tried and found
+free: `GM`, `GU`, `CB`, `X0`, `XS`, `M0`, `04`, `4X`, `7E`, `X4`.
 
 **Not the index.** The number `skidcfg` writes to line 1 of `SETUP.DAT` is
 allocated by `skidcfg`, in a fixed order, starting above the stock rows. You
@@ -176,6 +223,75 @@ sound fragments with the spacing the game expects, and line 4 out of `disk`.
 `skidcfg` wraps it to the window and takes the window's height from how many
 lines that came to.
 
+**Not which file a video mode needs.** A mode is `NAME.COD` plus `NAME.HDR`,
+and `skidcfg` works the name out of your `mode` so it can take the row off the
+menu when the file is not there. Without it the game stops with `Unable to size
+NAME.hdr.` rather than starting, which is the same reason a sound row goes when
+its driver does.
+
+
+## One driver, one device
+
+The game takes one sound device. Its command line accepts more than one `/s`
+switch and the last one wins: `/ssc /sad` plays the Ad Lib, `/sad /ssc` plays
+the Sound Canvas, both measured. There is no way to write a `SETUP.DAT` that
+asks for music on one card and effects on another, and this format will not
+grow a way to describe one, because a menu row that the game cannot obey is
+worse than a row that is not there.
+
+That is not the end of the idea, though. A driver that sends music to one
+device and effects to another is a perfectly good driver, and to `skidcfg` it
+is simply *a driver*: one file, one switch, one row, its own two voice banks.
+
+```
+SKIDCFGDRV01
+sound
+label Sound Canvas and Sound Blaster
+brief SC-55 + SB
+help Music on a Roland Sound Canvas at the MPU-401 port, and engine
+help sound on a Sound Blaster.
+SKIDCFGEND
+```
+
+Nothing here needs adding for that, which is the answer to whether the format
+should preview the case: it already does. The combining has to happen inside
+the driver regardless, because the driver is the only thing the game gives the
+job to.
+
+
+## When this format changes
+
+It will, and a driver written against version 1 has to keep working. Two
+mechanisms, and which one applies depends on whether an old reader would be
+wrong or merely incomplete.
+
+**A key `skidcfg` does not know is ignored.** So a later version can add an
+optional key, and a driver carrying it still works with every `skidcfg` that
+came before: the older one reads the rest of the block and does without. This
+is the usual case and it needs nothing from you. It is also why there are no
+reserved bytes here — a text format extends by gaining a word, not by leaving
+room for one.
+
+A typo costs little under that rule. Misspell a required key and the block is
+refused for the key being missing, which is the same message in the same place;
+misspell `help` and the row says `No Help Available`, which you see the first
+time you press F1.
+
+**The magic carries a version for the other case.** A change that would make an
+old reader wrong rather than incomplete — a new meaning for a key that already
+exists, or a different rule for an existing value — takes `SKIDCFGDRV02`. An
+older `skidcfg` does not recognise the magic, so it skips the block whole and
+the row simply does not appear, which is the right failure: a driver missing
+from a menu is recoverable, a driver described wrongly on one is not.
+
+There is deliberately no second, denser encoding of this format. A compressed
+variant would need a decoder inside `SKIDCFG.EXE` larger than everything it
+could ever save — the structure a packer could attack is about fifty bytes of
+a block, against a driver well over a thousand — and it costs what being
+plain text buys: `STRINGS` finds it, a hex editor fixes a typo in it, and an
+assembler emits it in a few lines of `db`. If that trade ever changes, it is
+a `SKIDCFGDRV02` and not a second format read alongside this one.
+
 
 ## Where the block goes
 
@@ -189,10 +305,18 @@ your linker puts a string constant.
 - every `*.DRV`, where a block describes a sound driver
 - `LOAD.EXE`, where a block describes a video mode
 
-`LOAD.EXE` is on the list because video modes are not drivers. There is no
-`.DRV` behind `load.exe /u MCGA`; the mode is code inside `LOAD.EXE`. So a new
-video mode describes itself from the binary that implements it, same rule, and
-it needs a `mode` key because there is no filename to derive one from.
+`LOAD.EXE` is on the list because video modes are not drivers. A mode is a
+`/u NAME` switch plus `NAME.COD`, about fifty kilobytes of graphics code, and a
+thirty byte `NAME.HDR` — and the name is inside `LOAD.EXE`. That is measured:
+`CGA.COD` and `CGA.HDR` copied to `ZZ.COD` and `ZZ.HDR` and asked for as
+`/u ZZ` does not start the game, while `/u CGA` beside it does.
+
+So video is the exact opposite of sound. A sound driver's switch *is* its
+filename, which is why one can appear simply by being copied in. A video mode
+cannot appear that way at all: adding one means patching `LOAD.EXE` to know the
+name. The block therefore goes in `LOAD.EXE`, which is the binary that learned
+the mode and so the only one that can honestly describe it, and it needs a
+`mode` key because there is no filename to derive one from.
 
 A `.DRV` holds one block and the search stops at the first. `LOAD.EXE` may hold
 several, one per video mode, read in the order they appear.
@@ -208,9 +332,11 @@ six sound rows are built into `skidcfg`; see `src/drvtab.h`.
 
 - **Lines end with LF** (`0Ah`). A CR before the LF is accepted and ignored, so
   a block written by a DOS text editor works, but LF is what to emit.
-- `SKIDCFGDRV1` and `SKIDCFGEND` each take a whole line. The `1` is the format
+- `SKIDCFGDRV01` and `SKIDCFGEND` each take a whole line. The `01` is the format
   version and is part of the magic, so a later format uses a different one and
-  an old `skidcfg` skips a block it would misread rather than guessing.
+  an old `skidcfg` skips a block it would misread rather than guessing. Two
+  digits because a version is easier to recognise as one: nothing counts them
+  or compares them, a reader matches the whole magic or does not.
 - **Seven-bit ASCII only**, `20h` to `7Eh`. Not fussiness: the text lands on a
   screen whose code page is whatever the machine booted with, and the bytes
   above `7Eh` are exactly the ones 437, 850 and 860 disagree about.

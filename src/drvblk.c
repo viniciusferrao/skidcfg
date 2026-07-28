@@ -89,13 +89,30 @@ static int copy_field(char *dst, int max, const char *src)
     return 1;
 }
 
-long drv_blk_find(const char *buf, long len)
+/* This runs over every byte of every driver and of LOAD.EXE, about 32 KB on a
+ * stock game, and it is the only thing in the program with a per-byte cost. On
+ * a 4.77 MHz XT that is the difference between a setup screen that appears and
+ * one you wait for, so both of the things below are deliberate and both were
+ * measured on an emulated one.
+ *
+ * The first character is compared here rather than inside memcmp. Calling
+ * memcmp at all 32,000 positions is 32,000 far calls in the large model, and
+ * nearly every one of them would fail on its first byte anyway. That alone was
+ * 5.0 seconds down to 2.0.
+ *
+ * And the index is an int. A long index makes every iteration 32-bit
+ * arithmetic on a 16-bit CPU, which is not an instruction but a call into the
+ * runtime's helpers, twice per byte. The length is an int for the same reason
+ * and costs nothing: this only ever sees one buffer at a time. */
+int drv_blk_find(const char *buf, int len)
 {
-    long   i;
     size_t n = strlen(DRV_BLK_MAGIC);
+    char   first = DRV_BLK_MAGIC[0];
+    int    last = len - (int)n;
+    int    i;
 
-    for (i = 0; i + (long)n <= len; i++) {
-        if (memcmp(buf + i, DRV_BLK_MAGIC, n) == 0) {
+    for (i = 0; i <= last; i++) {
+        if (buf[i] == first && memcmp(buf + i, DRV_BLK_MAGIC, n) == 0) {
             return i;
         }
     }
@@ -301,7 +318,22 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
             }
             join[joined] = '\0';
         } else {
-            return "a line is not a key this format has";
+            /* A key this build does not know is ignored rather than refused,
+             * and that is the format's way forward. A later skidcfg can add an
+             * optional key and a driver can carry it while still working here,
+             * which is what matters when drivers outlive the program that
+             * reads them. Refusing instead would mean every driver had to pick
+             * one version of skidcfg to work with.
+             *
+             * The magic is still there for a change this cannot absorb: a new
+             * meaning for a key that already exists needs SKIDCFGDRV2, and an
+             * old build then skips the block whole rather than misreading it.
+             *
+             * A typo costs little. Misspell a required key and the block is
+             * refused for the key being absent, which is the same message and
+             * the same place. Misspell help and the row says No Help
+             * Available, which its author sees the first time they press F1. */
+            continue;
         }
     }
 

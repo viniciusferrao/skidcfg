@@ -23,7 +23,9 @@
  * a sum. A table too big to copy simply cannot be extended, and says so. */
 #define MERGE_MAX 16
 
-#define NAME_MAX 13 /* 8.3 and a NUL */
+/* 8.3 and a NUL. Not NAME_MAX: that is POSIX's, Open Watcom defines it, and
+ * a program has no business redefining a name the headers own. */
+#define DRV_NAME_MAX 13
 #define WHY_MAX 72
 
 #define NO_ROOM "there is no room left on the menu"
@@ -36,11 +38,17 @@ struct ext {
     char cmd[DRV_MODE_MAX + 16];
     char disk[12];
     char help[DRV_BLK_HELP_MAX + 1];
-    char from[NAME_MAX];
+    char from[DRV_NAME_MAX];
 };
 
 static struct ext ext[DRV_SCAN_SOUND_MAX + DRV_SCAN_VIDEO_MAX];
 static int        n_ext;
+
+/* The .COD each video row needs, worked out from its own command fragment.
+ * Storage rather than a field in the table, because it is true of the built-in
+ * rows as much as of anything a block adds and drvtab.h should not have to
+ * repeat what its command string already says. */
+static char vcod[MERGE_MAX][DRV_NAME_MAX];
 
 static struct drv_opt vopt[MERGE_MAX];
 static struct drv_opt sopt[MERGE_MAX];
@@ -50,7 +58,7 @@ static int            grow_video;
 static int            grow_sound;
 static int            ready;
 
-static char skip_file[DRV_SCAN_SKIP_MAX][NAME_MAX];
+static char skip_file[DRV_SCAN_SKIP_MAX][DRV_NAME_MAX];
 static char skip_why[DRV_SCAN_SKIP_MAX][WHY_MAX];
 static int  n_skip;
 
@@ -59,11 +67,42 @@ static void note_skip(const char *file, const char *why)
     if (n_skip >= DRV_SCAN_SKIP_MAX) {
         return;
     }
-    strncpy(skip_file[n_skip], file, NAME_MAX - 1);
-    skip_file[n_skip][NAME_MAX - 1] = '\0';
+    strncpy(skip_file[n_skip], file, DRV_NAME_MAX - 1);
+    skip_file[n_skip][DRV_NAME_MAX - 1] = '\0';
     strncpy(skip_why[n_skip], why, WHY_MAX - 1);
     skip_why[n_skip][WHY_MAX - 1] = '\0';
     n_skip++;
+}
+
+/* The file a video row needs, out of its own command fragment: the word after
+ * /u with .COD on the end, so "load.exe /u CGA /h " wants CGA.COD. Written to
+ * out, which is left empty for a fragment with no /u in it.
+ *
+ * A mode is that file plus a NAME.HDR beside it, and the game will not start
+ * without them: deleting both and asking for /u CGA gets "Unable to size
+ * CGA.hdr." rather than a game. Only the .COD is checked. The two always ship
+ * together, and the half-installed case the check would miss is the one the
+ * game reports clearly by name, which is more than a missing sound driver
+ * manages. */
+static void cod_of(char *out, const char *cmd)
+{
+    const char *p = strstr(cmd, "/u ");
+    int         n = 0;
+
+    out[0] = '\0';
+    if (p == NULL) {
+        return;
+    }
+    for (p += 3; *p == ' '; p++) {
+        /* the space after /u may be more than one */
+    }
+    while (p[n] != '\0' && p[n] != ' ' && n < 8) {
+        out[n] = p[n];
+        n++;
+    }
+    if (n > 0) {
+        strcpy(out + n, ".COD");
+    }
 }
 
 /* The built-in tables, copied so that rows can be added after them. Every
@@ -88,6 +127,12 @@ static void ensure(void)
     if (grow_video) {
         for (i = 0; i < drv_video.n; i++) {
             vopt[i] = drv_video.opt[i];
+            /* Video rows come out of the table with no needs, because what a
+             * mode needs is already in its command fragment. Work it out here
+             * so that a row whose .COD is missing comes off the menu the same
+             * way a driver's does. */
+            cod_of(vcod[i], vopt[i].cmd);
+            vopt[i].needs = (vcod[i][0] != '\0') ? vcod[i] : NULL;
         }
         vtab.opt = vopt;
     }
@@ -118,9 +163,15 @@ static char lower(char c)
     return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
 }
 
-static int letter(char c)
+/* A digit is as good as a letter in a driver prefix, and that is measured:
+ * M015.DRV answers to /sm0, with M0SKIDMS.VCE and M0ENG1.VCE beside it. Worth
+ * allowing rather than tidying away, because two characters is all there is and
+ * a scheme that wants to number its drivers has nowhere else to put the
+ * number. */
+static int alnum(char c)
 {
-    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9');
 }
 
 /* A sound driver's switch, worked out from its filename, which is the only
@@ -129,7 +180,7 @@ static int letter(char c)
  * a menu. Returns 0 for such a name. */
 static int switch_of(char *out, const char *name)
 {
-    if (strlen(name) != 8 || !letter(name[0]) || !letter(name[1]) ||
+    if (strlen(name) != 8 || !alnum(name[0]) || !alnum(name[1]) ||
         name[2] != '1' || name[3] != '5' || strcmp(name + 4, ".DRV") != 0) {
         return 0;
     }
@@ -169,7 +220,7 @@ static const char *add(struct drv_blk *b, const char *name)
     e->brief[0] = '(';
     strcpy(e->brief + 1, b->brief);
     strcat(e->brief, ")");
-    strncpy(e->from, name, NAME_MAX - 1);
+    strncpy(e->from, name, DRV_NAME_MAX - 1);
     strcpy(e->help, b->help);
 
     if (b->video) {
@@ -191,9 +242,15 @@ static const char *add(struct drv_blk *b, const char *name)
     opt[t->n].disk = b->video ? e->disk : NULL;
     opt[t->n].help = (e->help[0] != '\0') ? e->help : NULL;
     opt[t->n].from = e->from;
-    /* A row that came out of a driver needs that driver, necessarily: it was
-     * read out of it a moment ago. Video rows need no file. */
-    opt[t->n].needs = b->video ? NULL : e->from;
+    /* A sound row needs the driver it was read out of, necessarily. A video
+     * row needs the .COD its mode names, which is not the file the block came
+     * from: the block is in LOAD.EXE and the mode's code is not. */
+    if (b->video) {
+        cod_of(vcod[t->n], e->cmd);
+        opt[t->n].needs = (vcod[t->n][0] != '\0') ? vcod[t->n] : NULL;
+    } else {
+        opt[t->n].needs = e->from;
+    }
     t->n++;
     n_ext++;
     return NULL;
@@ -311,14 +368,14 @@ static int block_of(const char *path, char *out, int outmax)
     }
     for (;;) {
         size_t have;
-        long   here;
+        int    here;
 
         got = fread(scratch + keep, 1, sizeof scratch - keep, f);
         if (got == 0) {
             break;
         }
         have = keep + got;
-        here = drv_blk_find(scratch, (long)have);
+        here = drv_blk_find(scratch, (int)have);
         if (here >= 0) {
             at = base + here;
             break;
@@ -344,7 +401,7 @@ static int block_of(const char *path, char *out, int outmax)
 /* Every *.DRV plus LOAD.EXE, in name order. The sort is not cosmetic: DOS
  * hands files back in whatever order the directory happens to hold them, and
  * two machines with the same files have to show the same menu. */
-static int list_files(char names[][NAME_MAX], int max)
+static int list_files(char names[][DRV_NAME_MAX], int max)
 {
     struct find_t f;
     int           n = 0;
@@ -354,20 +411,20 @@ static int list_files(char names[][NAME_MAX], int max)
     if (_dos_findfirst("*.DRV", _A_NORMAL, &f) == 0) {
         do {
             if (n < max) {
-                strncpy(names[n], f.name, NAME_MAX - 1);
-                names[n][NAME_MAX - 1] = '\0';
+                strncpy(names[n], f.name, DRV_NAME_MAX - 1);
+                names[n][DRV_NAME_MAX - 1] = '\0';
                 n++;
             }
         } while (_dos_findnext(&f) == 0);
     }
     if (n < max && _dos_findfirst("LOAD.EXE", _A_NORMAL, &f) == 0) {
-        strncpy(names[n], f.name, NAME_MAX - 1);
-        names[n][NAME_MAX - 1] = '\0';
+        strncpy(names[n], f.name, DRV_NAME_MAX - 1);
+        names[n][DRV_NAME_MAX - 1] = '\0';
         n++;
     }
 
     for (i = 1; i < n; i++) {
-        char tmp[NAME_MAX];
+        char tmp[DRV_NAME_MAX];
 
         strcpy(tmp, names[i]);
         for (j = i; j > 0 && strcmp(names[j - 1], tmp) > 0; j--) {
@@ -380,7 +437,7 @@ static int list_files(char names[][NAME_MAX], int max)
 
 void drv_scan(void)
 {
-    static char names[32][NAME_MAX];
+    static char names[32][DRV_NAME_MAX];
     static char text[DRV_BLK_MAX + 1];
     int         n;
     int         i;
