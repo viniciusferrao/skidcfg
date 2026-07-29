@@ -25,7 +25,8 @@ enum inst_state {
     INST_ABSENT,   /* no SETUP.EXE at all, so nothing to take over */
     INST_FOREIGN,  /* SETUP.ORG exists but SETUP.EXE is not skidcfg */
     INST_ORG_OURS, /* both are skidcfg, so the original is not here */
-    INST_UNSURE    /* SETUP.EXE is skidcfg and there is no SETUP.ORG */
+    INST_UNSURE,   /* SETUP.EXE is skidcfg and there is no SETUP.ORG */
+    INST_UNREAD    /* a file is there and could not be read through */
 };
 
 enum inst_state inst_state(void);

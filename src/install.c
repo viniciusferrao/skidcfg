@@ -13,7 +13,28 @@
  * already sitting there stops the uninstall rather than being written over,
  * the same as every other file here that this program did not put down. */
 #define SETUP_TMP "SETUP.$$$"
-#define SKIDCFG_EXE SKIDCFG_NAME ".EXE"
+/* What to call the file the user ran. Not a constant: the DOS archive ships
+ * SKIDCFG.EXE and SKIDCF32.EXE, both of which install, so a message naming
+ * SKIDCFG.EXE after an install done with the 32-bit one sends somebody to
+ * delete the wrong file. argv[0] is the only thing that knows, and only /I
+ * still has it: by the time /U runs, the copy that did the installing is
+ * whatever it was and nothing recorded it. That message says so instead of
+ * guessing. */
+static const char *base_of(const char *path)
+{
+    const char *b = path;
+    const char *p;
+
+    if (path == NULL) {
+        return SKIDCFG_NAME ".EXE";
+    }
+    for (p = path; *p != '\0'; p++) {
+        if (*p == '\\' || *p == '/' || *p == ':') {
+            b = p + 1;
+        }
+    }
+    return *b == '\0' ? SKIDCFG_NAME ".EXE" : b;
+}
 
 /* How this recognises its own binary. The marker is part of the title line, so
  * it is in the executable anyway and cannot drift out of it while the program
@@ -29,8 +50,21 @@ static char buf[8192];
 
 /* Whether a file has the marker in it. Read in overlapping blocks, because a
  * marker lying across a block boundary is the one way a whole file scan can
- * miss what it is looking for. */
-static int is_skidcfg(const char *path)
+ * miss what it is looking for.
+ *
+ * Three answers and not two. A file that cannot be opened or cannot be read
+ * through is not a file without the marker: it is a file nothing is known
+ * about, and the difference decides whether /U renames one binary over
+ * another. Every other ambiguous state here is refused and named, and a
+ * failing disk under SETUP.ORG is the same kind of ambiguity as a SETUP.ORG
+ * that turned out to be ours. */
+enum mark {
+    MARK_NO,
+    MARK_YES,
+    MARK_UNREADABLE
+};
+
+static enum mark marked(const char *path)
 {
     FILE  *f = fopen(path, "rb");
     size_t marklen = strlen(MARK);
@@ -38,7 +72,7 @@ static int is_skidcfg(const char *path)
     int    found = 0;
 
     if (f == NULL) {
-        return 0;
+        return MARK_UNREADABLE;
     }
     for (;;) {
         size_t got = fread(buf + keep, 1, sizeof buf - keep - 1, f);
@@ -61,8 +95,15 @@ static int is_skidcfg(const char *path)
         keep = have < marklen ? have : marklen - 1;
         memmove(buf, buf + have - keep, keep);
     }
+    /* A short read is how the end of the file and a failing one look alike to
+     * fread, so the error flag is the only thing that tells them apart. Asked
+     * before the close, which is what clears it. */
+    if (!found && ferror(f)) {
+        fclose(f);
+        return MARK_UNREADABLE;
+    }
     fclose(f);
-    return found;
+    return found ? MARK_YES : MARK_NO;
 }
 
 static int copy_file(const char *from, const char *to)
@@ -105,14 +146,29 @@ static int copy_file(const char *from, const char *to)
 
 enum inst_state inst_state(void)
 {
-    int have_exe = sk_file_present(SETUP_EXE);
-    int have_org = sk_file_present(SETUP_ORG);
+    enum sk_presence exe_there = sk_presence(SETUP_EXE);
+    enum sk_presence org_there = sk_presence(SETUP_ORG);
+    int              have_exe = exe_there == SK_PRESENT;
+    int              have_org = org_there == SK_PRESENT;
+    enum mark        exe;
 
+    /* A directory that would not say is not a directory with nothing in it.
+     * Refusing here is what stops /I from renaming over a SETUP.EXE it could
+     * not see. */
+    if (exe_there == SK_UNKNOWN || org_there == SK_UNKNOWN) {
+        return INST_UNREAD;
+    }
     if (!have_exe && !have_org) {
         return INST_ABSENT;
     }
+    exe = marked(SETUP_EXE);
+    if (exe == MARK_UNREADABLE) {
+        return INST_UNREAD;
+    }
     if (have_org) {
-        if (!is_skidcfg(SETUP_EXE)) {
+        enum mark org;
+
+        if (exe == MARK_NO) {
             return INST_FOREIGN;
         }
         /* And what SETUP.ORG is, not merely that it exists. Where both files
@@ -121,10 +177,17 @@ enum inst_state inst_state(void)
          * program where another was. Nothing in the ordinary path reaches
          * that, but the ordinary path is not what these states are for: every
          * other ambiguous one is refused and named, and this is an ambiguous
-         * one. */
-        return is_skidcfg(SETUP_ORG) ? INST_ORG_OURS : INST_DONE;
+         * one.
+         *
+         * An unreadable SETUP.ORG lands here too, for the same reason: the
+         * file /U would restore is the one thing it has to be sure of. */
+        org = marked(SETUP_ORG);
+        if (org == MARK_UNREADABLE) {
+            return INST_UNREAD;
+        }
+        return org == MARK_YES ? INST_ORG_OURS : INST_DONE;
     }
-    return is_skidcfg(SETUP_EXE) ? INST_UNSURE : INST_NONE;
+    return exe == MARK_YES ? INST_UNSURE : INST_NONE;
 }
 
 int inst_install(const char *self)
@@ -160,11 +223,16 @@ int inst_install(const char *self)
                "changed.\n",
                SETUP_EXE, SKIDCFG_NAME, SETUP_ORG);
         return 1;
+    case INST_UNREAD:
+        printf("%s or %s is here and cannot be read through, so what is in\n"
+               "the way is unknown. Nothing changed.\n",
+               SETUP_EXE, SETUP_ORG);
+        return 1;
     default:
         break;
     }
 
-    if (self == NULL || !sk_file_present(self)) {
+    if (self == NULL || sk_presence(self) != SK_PRESENT) {
         printf("Cannot find this program's own file to copy. DOS 3.0 and\n"
                "later pass it on the command line; older ones do not, and\n"
                "there it has to be copied over %s by hand.\n",
@@ -197,7 +265,7 @@ int inst_install(const char *self)
     printf("%s has been installed.\n"
            "%s is now %s and the original program has been backed up.\n"
            "Run %s /U to uninstall %s.\n",
-           SKIDCFG_NAME, SETUP_EXE, SKIDCFG_EXE, SETUP_EXE, SKIDCFG_NAME);
+           SKIDCFG_NAME, SETUP_EXE, base_of(self), SETUP_EXE, SKIDCFG_NAME);
     return 0;
 }
 
@@ -235,6 +303,16 @@ int inst_uninstall(void)
                "nothing to undo and removing it would leave you with no\n"
                "%s at all. Nothing changed.\n",
                SETUP_EXE, SKIDCFG_NAME, SETUP_ORG, SETUP_EXE);
+        return 1;
+    case INST_UNREAD:
+        /* The file this would rename into place is the one thing it has to be
+         * sure of, and it is not. Announcing that the original was restored
+         * after moving a file nobody could read is the failure this state
+         * exists to prevent. */
+        printf("%s or %s is here and cannot be read through, so whether the\n"
+               "original is what would be put back is unknown. Nothing\n"
+               "changed.\n",
+               SETUP_EXE, SETUP_ORG);
         return 1;
     case INST_DONE:
         break;
@@ -284,7 +362,7 @@ int inst_uninstall(void)
      * the one thing the rest of this file is written to avoid. */
     printf("%s has been uninstalled.\n"
            "%s has been restored.\n"
-           "To fully remove %s, also manually remove %s.\n",
-           SKIDCFG_NAME, SETUP_EXE, SKIDCFG_NAME, SKIDCFG_EXE);
+           "To fully remove %s, also remove the copy you originally ran.\n",
+           SKIDCFG_NAME, SETUP_EXE, SKIDCFG_NAME);
     return 0;
 }

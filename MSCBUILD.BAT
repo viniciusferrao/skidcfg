@@ -23,6 +23,13 @@ rem off:
 rem     set EXTRA=/DSKIDCFG_SC55
 rem before running this.
 
+rem Any earlier build goes before this one starts. A batch file here cannot
+rem set an errorlevel, so what a caller has to go on is the message and the
+rem files; leaving a working binary from last time next to a failed rebuild
+rem makes the second of those lie.
+if exist SKIDCFG.EXE del SKIDCFG.EXE
+if exist SKIDCHK.EXE del SKIDCHK.EXE
+
 cd src
 
 rem /AL selects the large model. Nothing here needs more than 64 KB, so a

@@ -1,7 +1,7 @@
 # skidcfg - a setup program for Stunts 1.1
 #
 # Strict C89 with no dependencies, so it builds anywhere "make" runs. For a
-# 16-bit DOS build, which is the one that matters, run DOSBUILD.BAT under
+# 16-bit DOS build, which is the one that matters, run MSCBUILD.BAT under
 # Microsoft C 5.10.
 CC      ?= cc
 CFLAGS  ?= -std=c89 -pedantic -Wall -Wextra -O2
@@ -42,7 +42,7 @@ skidcfg: $(SRC) $(HDR)
 # Deliberately not called "install". The binary this builds is hosted: it draws
 # nothing and reads no keyboard, and copying it into a game directory puts an
 # executable the machine cannot run where the one it can used to be. What
-# belongs there comes out of DOSBUILD.BAT or WCLBUILD.BAT. This target is for
+# belongs there comes out of MSCBUILD.BAT or WCLBUILD.BAT. This target is for
 # looking at the hosted build somewhere harmless.
 stage: skidcfg
 	@test -n "$(STAGE_DIR)" || { \
@@ -51,7 +51,7 @@ stage: skidcfg
 	  echo "  hosted one and there is nowhere it obviously belongs." >&2; \
 	  exit 1; }
 	@echo "This is a hosted build and is not a DOS program."
-	@echo "For a game directory, build SKIDCFG.EXE with DOSBUILD.BAT"
+	@echo "For a game directory, build SKIDCFG.EXE with MSCBUILD.BAT"
 	@echo "or WCLBUILD.BAT and copy that."
 	cp skidcfg "$(STAGE_DIR)"
 
@@ -118,23 +118,42 @@ lint:
 # The assertion is spelled out in both rules rather than shared. A canned
 # recipe would do it once, and the one thing this must not be is clever.
 
+# Every text member is generated the same way and checked the same way, so both
+# halves are written once.
+#
+# The CR comes off before it goes back on. Whether the source has one depends on
+# .gitattributes and on what the checkout did, and "add a CR to every line" run
+# over a file that already had them produces CR CR LF. That happened: the
+# DOS/32A licence is checked out CRLF for the DOS reader's benefit, and the
+# generated copy carried a doubled CR on every line.
+#
+# The seven-bit check cannot see that, because it deletes every CR before it
+# looks. So the line endings are asserted separately, and asserted against the
+# bytes: strip the CRs, put exactly one back per line, and the result has to be
+# the file itself. Anything else, a doubled CR or a bare LF, fails the compare.
+DOSTEXT = LC_ALL=C
+define dostext_verify
+	@if $(DOSTEXT) tr -d '\r\n' < $@ | $(DOSTEXT) grep -q '[^ -~]'; then \
+	  echo "$@ still has bytes a DOS code page would mangle:" >&2; \
+	  $(DOSTEXT) grep -n '[^ -~]' $@ >&2; rm -f $@; exit 1; \
+	fi
+	@if ! tr -d '\r' < $@ | sed 's/$$/\r/' | cmp -s - $@; then \
+	  echo "$@ is not exactly CRLF throughout:" >&2; \
+	  od -c $@ | grep '\\r  *\\r\|[^r]  *\\n' | head -5 >&2; \
+	  rm -f $@; exit 1; \
+	fi
+	@echo "$@ is seven-bit ASCII with CRLF"
+endef
+
 # 78 columns because that is what EDIT.COM reads comfortably.
 README.TXT: README.md tools/txtify.awk tools/asciify.sed
-	awk -f tools/txtify.awk README.md \
+	tr -d '\r' < README.md | awk -f tools/txtify.awk \
 	  | sed -f tools/asciify.sed | sed 's/$$/\r/' > $@
-	@if LC_ALL=C tr -d '\r\n' < $@ | LC_ALL=C grep -q '[^ -~]'; then \
-	  echo "$@ still has bytes a DOS code page would mangle:" >&2; \
-	  LC_ALL=C grep -n '[^ -~]' $@ >&2; rm -f $@; exit 1; \
-	fi
-	@echo "$@ is seven-bit ASCII with CRLF"
+	$(dostext_verify)
 
 LICENSE.TXT: LICENSE tools/asciify.sed
-	sed -f tools/asciify.sed LICENSE | sed 's/$$/\r/' > $@
-	@if LC_ALL=C tr -d '\r\n' < $@ | LC_ALL=C grep -q '[^ -~]'; then \
-	  echo "$@ still has bytes a DOS code page would mangle:" >&2; \
-	  LC_ALL=C grep -n '[^ -~]' $@ >&2; rm -f $@; exit 1; \
-	fi
-	@echo "$@ is seven-bit ASCII with CRLF"
+	tr -d '\r' < LICENSE | sed -f tools/asciify.sed | sed 's/$$/\r/' > $@
+	$(dostext_verify)
 
 # DOS/32A's own licence, which travels with any archive holding SKIDCF32.EXE:
 # the extender is linked into that binary, and clause 2 asks for the notice in
@@ -146,12 +165,8 @@ LICENSE.TXT: LICENSE tools/asciify.sed
 # from another project, so it is the Liberty Edition text that matches the
 # extender actually bound in.
 DOS32A.TXT: tools/dos32a-license.txt
-	sed -f tools/asciify.sed $< | sed 's/$$/\r/' > $@
-	@if LC_ALL=C tr -d '\r\n' < $@ | LC_ALL=C grep -q '[^ -~]'; then \
-	  echo "$@ still has bytes a DOS code page would mangle:" >&2; \
-	  LC_ALL=C grep -n '[^ -~]' $@ >&2; rm -f $@; exit 1; \
-	fi
-	@echo "$@ is seven-bit ASCII with CRLF"
+	tr -d '\r' < $< | sed -f tools/asciify.sed | sed 's/$$/\r/' > $@
+	$(dostext_verify)
 
 clean:
 	rm -f skidcfg skidcfg.exe SKIDCFG.EXE SKIDCHK.EXE selfcheck \

@@ -26,6 +26,7 @@
  * machine can check its own build. Every file it writes is removed before it
  * returns, and the names are 8.3 so DOS keeps them intact.
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -485,7 +486,7 @@ static void check_file(void)
     s.sound = 900;
     expect("an index that is not in the table is refused",
            setup_write(&s, DAT) != 0, 1);
-    expect("and leaves no file behind", sk_file_present(DAT), 0);
+    expect("and leaves no file behind", sk_presence(DAT) == SK_PRESENT, 0);
 
     /* The file is built under another name and moved into place, so that a
      * disk that fills up cannot leave the game with half a SETUP.DAT. What
@@ -494,13 +495,13 @@ static void check_file(void)
     setup_default(&s);
     expect("a file can be written where there was none", setup_write(&s, DAT),
            0);
-    expect("and no scratch file is left beside it", sk_file_present(TMP_NEW),
+    expect("and no scratch file is left beside it", sk_presence(TMP_NEW) == SK_PRESENT,
            0);
-    expect("nor the other one", sk_file_present(TMP_OLD), 0);
+    expect("nor the other one", sk_presence(TMP_OLD) == SK_PRESENT, 0);
     expect("writing over one already there works too", setup_write(&s, DAT), 0);
     expect("and still leaves neither",
-           sk_file_present(TMP_NEW) || sk_file_present(TMP_OLD), 0);
-    expect("while the file itself is there", sk_file_present(DAT), 1);
+           sk_presence(TMP_NEW) == SK_PRESENT || sk_presence(TMP_OLD) == SK_PRESENT, 0);
+    expect("while the file itself is there", sk_presence(DAT) == SK_PRESENT, 1);
 
     /* Neither scratch name is written over, whatever is under it. A machine
      * switched off mid-replacement leaves one of them behind holding the only
@@ -1278,6 +1279,28 @@ static void check_merge(void)
     drv_scan_offer(BLOCK_OK, "LOAD.EXE");
     expect("a sound block in LOAD.EXE is skipped", drv_scan_skipped(), 1);
 
+    /* A DOS name has one case. DOS hands these back folded up so the primary
+     * builds never see anything else, but Windows preserves whatever spelling
+     * somebody stored: it finds and opens sc15.drv perfectly well, and a
+     * literal comparison then refuses it as not being a driver at all. Both
+     * halves are checked, because the extension and the video carrier are
+     * recognised by two separate tests. */
+    drv_scan_reset();
+    drv_scan_offer(BLOCK_OK, "sc15.drv");
+    expect("a lower case driver name is still a driver",
+           drv_scan_sound()->n, drv_sound.n + 1);
+    expect("and nothing is skipped", drv_scan_skipped(), 0);
+    expect_str("and its switch is derived the same way",
+               last_of(drv_scan_sound())->cmd, "/ssc ");
+
+    drv_scan_reset();
+    drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\ndisk B\n"
+                   "label SVGA graphics\nbrief SVGA\nSKIDCFGEND\n",
+                   "Load.Exe");
+    expect("a mixed case LOAD.EXE is still the video carrier",
+           drv_scan_video()->n, drv_video.n + 1);
+    expect("and nothing is skipped", drv_scan_skipped(), 0);
+
     drv_scan_reset();
     drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\nlabel SVGA graphics\n"
                    "brief SVGA\nSKIDCFGEND\n",
@@ -1822,6 +1845,166 @@ static void check_install(void)
     inst_files(NULL, NULL);
 }
 
+/* ------------------------------------------- what a failed search meant --
+ *
+ * The two calls do not fail the same way, and reading them as if they did is
+ * how a walk that broke becomes a walk that finished. Starting a search that
+ * matches nothing is an ordinary end; running out of entries is an ordinary
+ * end; a path that has gone away under a walk already in progress is not.
+ *
+ * A failing disk is what provokes these codes and there is no C89 way to
+ * arrange one. The classifier is a pure function of the raw error, so it is
+ * checked directly: this is where the mistake was, and the I/O is not what
+ * would have caught it.
+ */
+static void check_classify(void)
+{
+    printf("\n--    the end of a search and the end of a directory\n");
+
+#if defined(SK_DOS)
+    /* Both DOS branches read the raw INT 21h code, so the table is one table.
+     * Turbo C gets there through _doserrno rather than errno, because its
+     * errno reports the ordinary end of a walk as ENOENT. */
+    expect("findfirst with no matching file ends", (int)sk_classify_first(2),
+           (int)SK_FIND_END);
+    expect("findfirst with no such path ends", (int)sk_classify_first(3),
+           (int)SK_FIND_END);
+    expect("findfirst with no more files ends", (int)sk_classify_first(18),
+           (int)SK_FIND_END);
+    expect("findnext with no more files ends", (int)sk_classify_next(18),
+           (int)SK_FIND_END);
+    /* The two that were wrong. Error 2 or 3 arriving at findnext is the path
+     * going away under a walk that had already returned a name, and calling
+     * that the end of the directory is how a partial list passes for whole. */
+    expect("findnext with file not found is an error",
+           (int)sk_classify_next(2), (int)SK_FIND_ERROR);
+    expect("findnext with path not found is an error",
+           (int)sk_classify_next(3), (int)SK_FIND_ERROR);
+    expect("access denied is an error", (int)sk_classify_next(5),
+           (int)SK_FIND_ERROR);
+    expect("and so is an invalid drive", (int)sk_classify_first(15),
+           (int)SK_FIND_ERROR);
+#elif defined(SK_WIN32)
+    /* Here the runtime really does report both endings the same way, so the
+     * two classifiers agreeing is correct rather than an oversight. */
+    expect("no match ends", (int)sk_classify_first(ENOENT), (int)SK_FIND_END);
+    expect("no more matches ends", (int)sk_classify_next(ENOENT),
+           (int)SK_FIND_END);
+    expect("a bad filespec is an error", (int)sk_classify_first(EINVAL),
+           (int)SK_FIND_ERROR);
+    expect("and so is running out of memory", (int)sk_classify_next(ENOMEM),
+           (int)SK_FIND_ERROR);
+#endif
+}
+
+/* --------------------------------------------------- a file nobody can see --
+ *
+ * Whether a name is taken is not the same question as which drivers to offer,
+ * and a hidden file is where the two answers come apart. DOS returns hidden
+ * entries from a directory search only when the mask asks for them, so an
+ * ordinary search calls a hidden SETUP.$N$ absent, and the write that follows
+ * truncates somebody's file rather than refusing.
+ *
+ * Only where hidden files exist. A hosted build has no attribute to set, and
+ * nothing there is protected by this.
+ */
+#ifdef SK_SCREEN
+/* #if rather than #ifdef, because Turbo C 2.01 refuses an #elif that follows
+ * an #ifdef and says only "misplaced elif". Every #elif chain in this tree
+ * starts from #if defined(...) for that reason. */
+#    if defined(SK_WIN32)
+#        include <windows.h>
+static int hide(const char *path)
+{
+    return SetFileAttributesA(path, FILE_ATTRIBUTE_HIDDEN) != 0;
+}
+
+static void unhide(const char *path)
+{
+    SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
+}
+#    elif defined(__TURBOC__)
+/* Turbo C has no _dos_setfileattr. _chmod with func 1 sets the attribute and
+ * the constants are the FA_ ones, not the _A_ ones. */
+#        include <io.h>
+static int hide(const char *path)
+{
+    return _chmod(path, 1, FA_HIDDEN) != -1;
+}
+
+static void unhide(const char *path)
+{
+    _chmod(path, 1, 0);
+}
+#    else
+static int hide(const char *path)
+{
+    return _dos_setfileattr(path, _A_HIDDEN) == 0;
+}
+
+static void unhide(const char *path)
+{
+    _dos_setfileattr(path, _A_NORMAL);
+}
+#    endif
+
+static void check_hidden(void)
+{
+    static const char NAME[] = "SCTEST.$N$";
+    FILE             *f;
+
+    printf("\n--    a hidden file is still a file in the way\n");
+
+    f = fopen(NAME, "wb");
+    if (f == NULL) {
+        printf("skip  cannot create %s here\n", NAME);
+        return;
+    }
+    fputs("settings", f);
+    fclose(f);
+
+    expect("an ordinary scratch file is present", sk_presence(NAME) == SK_PRESENT, 1);
+
+    if (!hide(NAME)) {
+        printf("skip  cannot set the hidden attribute on %s\n", NAME);
+        remove(NAME);
+        return;
+    }
+    /* The check this whole function exists for. Before the mask carried
+     * _A_HIDDEN this answered 0, and the caller that asked went on to open the
+     * file for writing. */
+    expect("and still present once it is hidden",
+           sk_presence(NAME) == SK_PRESENT, 1);
+
+    /* The two walks have to disagree about it, which is the whole reason there
+     * are two. On DOS the search mask does this; on Windows there is no mask
+     * and each entry is filtered here, which is how the ordinary walk on that
+     * host once came to return everything the other one did. */
+    {
+        struct sk_find      w;
+        enum sk_find_result r;
+        int                 seen_ordinary = 0;
+        int                 seen_all = 0;
+
+        for (r = sk_find_first(&w, NAME); r == SK_FIND_MATCH;
+             r = sk_find_next(&w)) {
+            seen_ordinary++;
+        }
+        sk_find_done(&w);
+        for (r = sk_find_first_all(&w, NAME); r == SK_FIND_MATCH;
+             r = sk_find_next(&w)) {
+            seen_all++;
+        }
+        sk_find_done(&w);
+        expect("the ordinary walk does not offer it", seen_ordinary, 0);
+        expect("and the all-attributes walk does", seen_all, 1);
+    }
+
+    unhide(NAME);
+    remove(NAME);
+}
+#endif
+
 /* ------------------------------------------------------- the safety catch --
  *
  * This program creates and removes files, and some of them are named after the
@@ -1832,9 +2015,9 @@ static void check_install(void)
  * Run in a Stunts directory, that truncates CGA.COD to nothing and then
  * deletes it, along with the other three overlays and all four drivers. A
  * quarter of a megabyte of the game, gone, from a program whose whole purpose
- * is preserving it. The release ships this binary beside SKIDCFG.EXE, so a
- * reader who unpacks the archive into their game directory and runs the
- * checker is exactly the person it would happen to.
+ * is preserving it. The release no longer ships this binary, but every DOS
+ * build produces it and DEVELOP.md says to run it, so the person it would
+ * happen to is whoever builds the program and tries it where the game is.
  *
  * So it refuses to start anywhere it might do that. Every name it could touch
  * is listed and looked for first, and finding any of them is a refusal rather
@@ -1858,20 +2041,36 @@ static const char *in_the_way(void)
          * each would be a list nobody maintains, and a directory holding any
          * .DRV at all is one this has no business writing into. Stronger than
          * the table below and it costs one directory call. */
-        static char    found[SK_NAME_MAX];
-        struct sk_find f;
+        static char         found[SK_NAME_MAX];
+        struct sk_find      f;
+        enum sk_find_result r;
 
-        if (sk_find_first(&f, "*.DRV")) {
+        /* Every attribute, not the ordinary ones. A menu should not offer a
+         * hidden driver, which is why the scanner does not list them, but this
+         * is asking whether anything would be written over and a hidden
+         * T000.DRV is destroyed by "wb" exactly like a visible one. The names
+         * this creates are not in SCRATCH below and could not be, so this call
+         * is the only thing standing in front of them. */
+        r = sk_find_first_all(&f, "*.DRV");
+        if (r == SK_FIND_MATCH) {
             strncpy(found, f.name, sizeof found - 1);
             found[sizeof found - 1] = '\0';
             sk_find_done(&f);
             return found;
         }
         sk_find_done(&f);
+        /* A directory that would not answer is not an empty one, and this call
+         * is the only thing standing in front of the T000.DRV names. Refusing
+         * on an unreadable directory costs a run somebody can repeat; taking
+         * it for empty costs whatever was in there. */
+        if (r == SK_FIND_ERROR) {
+            strcpy(found, "*.DRV");
+            return found;
+        }
     }
 #endif
     for (i = 0; i < (int)(sizeof SCRATCH / sizeof SCRATCH[0]); i++) {
-        if (sk_file_present(SCRATCH[i])) {
+        if (sk_presence(SCRATCH[i]) != SK_ABSENT) {
             return SCRATCH[i];
         }
     }
@@ -1880,13 +2079,15 @@ static const char *in_the_way(void)
      * the scanner rather than from drvtab.h. Neither call touches a file. */
     t = drv_scan_sound();
     for (i = 0; i < t->n; i++) {
-        if (t->opt[i].needs != NULL && sk_file_present(t->opt[i].needs)) {
+        if (t->opt[i].needs != NULL &&
+            sk_presence(t->opt[i].needs) != SK_ABSENT) {
             return t->opt[i].needs;
         }
     }
     t = drv_scan_video();
     for (i = 0; i < t->n; i++) {
-        if (t->opt[i].needs != NULL && sk_file_present(t->opt[i].needs)) {
+        if (t->opt[i].needs != NULL &&
+            sk_presence(t->opt[i].needs) != SK_ABSENT) {
             return t->opt[i].needs;
         }
     }
@@ -1916,6 +2117,8 @@ int main(void)
 #ifdef SK_SCREEN
     check_scan();
     check_directory();
+    check_classify();
+    check_hidden();
 #endif
     check_missing();
 #ifdef DRV_TABLE_STOCK

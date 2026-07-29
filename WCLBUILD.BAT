@@ -1,7 +1,7 @@
 @echo off
 rem Build skidcfg with Open Watcom 1.9, 16-bit DOS, large model.
 rem
-rem DOSBUILD.BAT is the period build and the one the sources were written
+rem MSCBUILD.BAT is the period build and the one the sources were written
 rem against; this is the one a release is built with, for a reason that is
 rem practical rather than technical. Microsoft C 5.10 cannot be installed on a
 rem CI runner, so a release built with it would be a file somebody made by hand
@@ -34,7 +34,7 @@ rem tool does not start on 64-bit Windows at all.
 set WCLBIN=%WATCOM%\BINW
 if "%OS%"=="Windows_NT" set WCLBIN=%WATCOM%\BINNT
 
-rem Look before starting, the same as DOSBUILD.BAT does. The headers are checked
+rem Look before starting, the same as MSCBUILD.BAT does. The headers are checked
 rem separately from the tools: WATCOM pointing at a tools-only tree gets through
 rem every compile line before the first #include fails.
 if exist %WCLBIN%\WCL.EXE goto havewcl
@@ -65,7 +65,7 @@ if "%1"=="win32" goto win32
 if "%1"=="NT" goto win32
 if "%1"=="nt" goto win32
 
-rem -ml is the large model, matching DOSBUILD.BAT, and -0 keeps the output on
+rem -ml is the large model, matching MSCBUILD.BAT, and -0 keeps the output on
 rem the 8086 the game ran on.
 rem
 rem Deliberately not -za. Strict ANSI hides int86, getch and _dos_findfirst,
@@ -75,11 +75,19 @@ rem be: CI compiles every source with -std=c90 -pedantic-errors under four
 rem hosted compilers, which is a better test of the C than a DOS compiler's own
 rem switch would be.
 rem
-rem -k8192 is the stack, and it is the same 8 KB DOSBUILD.BAT asks the Microsoft
+rem -k8192 is the stack, and it is the same 8 KB MSCBUILD.BAT asks the Microsoft
 rem linker for. The default is tight once argv and a few automatic buffers are
 rem on it, and running out is not diagnosed: the program stops mid printf with a
 rem half flushed buffer, which reads like a failed check rather than a crash.
 rem Leave it out and that is what a broken build looks like.
+rem Last time's binaries go before this build starts, and only the two this
+rem target produces: a 16-bit build has no business deleting the 386 pair. A
+rem batch file here cannot set an errorlevel, so a caller has the message and
+rem the files to go on, and a working binary from last time sitting beside a
+rem failed rebuild makes the second of those lie.
+if exist ..\SKIDCFG.EXE del ..\SKIDCFG.EXE
+if exist ..\SKIDCHK.EXE del ..\SKIDCHK.EXE
+
 wcl -bt=dos -ml -0 -w3 -k8192 *.c -fe=..\SKIDCFG.EXE
 if errorlevel 1 goto fail
 del *.obj
@@ -92,7 +100,9 @@ rem
 rem One physical line, however long it looks. The caret is cmd.exe's line
 rem continuation and COMMAND.COM has no such thing: it reads a batch file one
 rem line at a time, so the caret would go to WCL as an argument and the next
-rem line would be run as a command. This is 119 characters and DOS allows 128.
+rem line would be run as a command. This is 125 characters and DOS allows 127,
+rem so there is no room for another source file: the next one to be added has
+rem to go through a response file the way TCBUILD.BAT already does.
 wcl -bt=dos -ml -0 -w3 -k8192 -i=. ..\test\selfchk.c drivers.c drvblk.c drvscan.c setup.c install.c util.c -fe=..\SKIDCHK.EXE
 if errorlevel 1 goto fail
 del *.obj
@@ -104,15 +114,23 @@ echo     SKIDCHK
 if "%OS%"=="Windows_NT" exit /b 0
 goto end
 
-rem The 32-bit build. -3s is 386 instructions with the stack calling
-rem convention, matching the 16-bit build's plain register set rather than
-rem Watcom's own; -l=dos32a binds the extender into the executable so there is
-rem one file to ship and nothing to install.
+rem The 32-bit build. -l=dos32a binds the extender into the executable so there
+rem is one file to ship and nothing to install; wcl386 targets a 386 by default,
+rem which is what the extender needs anyway.
+rem
+rem No -3s. It would name the instruction set and the stack calling convention
+rem explicitly, but the self-check command below is already 125 characters
+rem against a 127 character DOS limit and four more do not fit. The default is
+rem the same 386 target, so what is lost is the calling convention, which
+rem nothing here depends on: no assembly is linked in and no other build's
+rem objects are mixed with these.
 rem
 rem No -k here. The extender gives the program a flat stack of its own and the
 rem 2 KB DOS default does not apply, which is the one place this target is less
 rem fussy than the other.
 :build386
+if exist ..\SKIDCF32.EXE del ..\SKIDCF32.EXE
+if exist ..\SKIDCK32.EXE del ..\SKIDCK32.EXE
 wcl386 -bt=dos -l=dos32a -w3 *.c -fe=..\SKIDCF32.EXE
 if errorlevel 1 goto fail
 del *.obj
@@ -138,8 +156,16 @@ rem Only under cmd.exe. This script picks BINW on a DOS host and BINNT on
 rem Windows, so it is meant to run under COMMAND.COM as well, and COMMAND.COM
 rem has no "exit /b": there it would exit the shell rather than the batch file,
 rem and under DOSBox it closes the emulator on a successful build. So the exit
-rem code is conditional and the message is not. DOSBUILD.BAT is DOS only and
+rem code is conditional and the message is not. MSCBUILD.BAT is DOS only and
 rem says the same thing where it would have used one.
+rem
+rem Every one of these paths jumps to :end, and :end is the last line in the
+rem file. It has to be: a label does not stop a batch file, so COMMAND.COM
+rem reaching :end simply carries on into whatever is written below it. With
+rem the Windows block below :end, a plain WCLBUILD on DOS built the 16-bit
+rem program and then tried to build a Win32 one, and the Win32 block's own
+rem "goto end" jumped backwards above itself and looped. cmd.exe never saw any
+rem of it, because "exit /b" leaves before the goto is reached.
 :fail
 del *.obj
 cd ..
@@ -149,8 +175,7 @@ goto end
 
 :badenv
 if "%OS%"=="Windows_NT" exit /b 1
-
-:end
+goto end
 
 rem The Windows console build. -bt=nt and nothing else: src/scrn.c draws the
 rem same screen through the console API, whose attribute word has the same bits
@@ -162,6 +187,8 @@ rem No -l: a Win32 executable needs no extender.
 rem The NT headers are a directory below the common ones, and windows.h is
 rem only there. wcl386 -bt=nt does not add it to INCLUDE by itself.
 set INCLUDE=%WATCOM%\H;%WATCOM%\H\NT
+if exist ..\SKIDCFW.EXE del ..\SKIDCFW.EXE
+if exist ..\SKIDCKW.EXE del ..\SKIDCKW.EXE
 wcl386 -bt=nt -w3 *.c -fe=..\SKIDCFW.EXE
 if errorlevel 1 goto fail
 del *.obj
@@ -177,4 +204,6 @@ echo.
 echo Built SKIDCFW.EXE and SKIDCKW.EXE. Check the build with:
 echo     SKIDCKW
 if "%OS%"=="Windows_NT" exit /b 0
-goto end
+
+rem Last line in the file, and nothing may be written below it.
+:end

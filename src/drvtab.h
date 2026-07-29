@@ -199,7 +199,7 @@ DRV_SOUND(5, "/smt ", "MT15.DRV", "(MT-32)", "Roland MT-32",
 /* The Roland SC-55, which the game never heard of and skidsc55 supplies.
  *
  *     make EXTRA=-DSKIDCFG_SC55
- *     set EXTRA=/DSKIDCFG_SC55        before DOSBUILD.BAT
+ *     set EXTRA=/DSKIDCFG_SC55        before MSCBUILD.BAT
  *
  * Off unless asked for, because the entry is only usable with SC15.DRV and the
  * SC prefixed voice banks beside the game, and offering a driver whose files

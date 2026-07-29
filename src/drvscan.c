@@ -169,8 +169,12 @@ static int allocate(const struct drv_tab *t, int floor)
  * a menu. Returns 0 for such a name. */
 static int switch_of(char *out, const char *name)
 {
+    /* sk_name_eq and not strcmp. DOS hands these back folded up, but Windows
+     * preserves whatever spelling somebody stored, so a driver copied in as
+     * sc15.drv is found and opened and would then fail to be recognised as a
+     * driver at all. */
     if (strlen(name) != 8 || !sk_alnum(name[0]) || !sk_alnum(name[1]) ||
-        name[2] != '1' || name[3] != '5' || strcmp(name + 4, ".DRV") != 0) {
+        name[2] != '1' || name[3] != '5' || !sk_name_eq(name + 4, ".DRV")) {
         return 0;
     }
     out[0] = '/';
@@ -184,10 +188,15 @@ static int switch_of(char *out, const char *name)
 
 /* Whether the file a row needs is on the disk. NULL is a row that needs no
  * file, which is every video mode with no .COD to look for and is not the same
- * question sk_file_present answers. */
+ * question sk_presence answers.
+ *
+ * A directory that cannot answer hides the row. That is the safe way round
+ * here: an offered row whose driver turns out to be missing stops the game,
+ * while a hidden one costs a menu entry on a machine already having trouble
+ * reading its own disk. */
 static int needs_present(const char *name)
 {
-    return name == NULL || sk_file_present(name);
+    return name == NULL || sk_presence(name) == SK_PRESENT;
 }
 
 /* Whether two command fragments would put the same thing on line 2 of
@@ -391,7 +400,7 @@ void drv_scan_offer(const char *text, const char *name)
          * describes. A video mode is code inside LOAD.EXE and a sound driver
          * is a .DRV, so one in the wrong carrier is a mistake worth naming
          * rather than a row to guess at. */
-        int is_load = (strcmp(name, "LOAD.EXE") == 0);
+        int is_load = sk_name_eq(name, "LOAD.EXE");
 
         if (b.video && !is_load) {
             why = "a video block belongs in LOAD.EXE";
@@ -511,16 +520,21 @@ static long block_of(const char *path, char *out, int outmax, long from)
  * every machine: stopping early kept whichever names DOS happened to hand back
  * first, so two directories holding the same files could draw different menus.
  * That is the same reason the sort below is not cosmetic. */
+/* Returns the number of names found, or -1 if the directory stopped
+ * answering. A short list and a failed walk are not the same thing: read as
+ * one, a floppy that fails halfway presents whatever it managed to read as
+ * the whole of what is on the disk. */
 static int list_files(char names[][SK_NAME_MAX], int max, int *over)
 {
-    struct sk_find f;
-    int            n = 0;
-    int            more;
-    int            i;
-    int            j;
+    struct sk_find      f;
+    int                 n = 0;
+    enum sk_find_result more;
+    int                 i;
+    int                 j;
 
     *over = 0;
-    for (more = sk_find_first(&f, "*.DRV"); more; more = sk_find_next(&f)) {
+    for (more = sk_find_first(&f, "*.DRV"); more == SK_FIND_MATCH;
+         more = sk_find_next(&f)) {
         if (n < max - 1) {
             strncpy(names[n], f.name, SK_NAME_MAX - 1);
             names[n][SK_NAME_MAX - 1] = '\0';
@@ -546,13 +560,24 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
         }
     }
     sk_find_done(&f);
+    if (more == SK_FIND_ERROR) {
+        return -1;
+    }
 
-    if (n < max && sk_find_first(&f, "LOAD.EXE")) {
+    /* LOAD.EXE is a second search and gets the same treatment as the first.
+     * It is the carrier for every video block, so reading an unreadable
+     * directory as one with no LOAD.EXE in it would take the whole video
+     * extension mechanism away without a word. */
+    more = sk_find_first(&f, "LOAD.EXE");
+    if (more == SK_FIND_MATCH && n < max) {
         strncpy(names[n], f.name, SK_NAME_MAX - 1);
         names[n][SK_NAME_MAX - 1] = '\0';
         n++;
     }
     sk_find_done(&f);
+    if (more == SK_FIND_ERROR) {
+        return -1;
+    }
 
     for (i = 1; i < n; i++) {
         char tmp[SK_NAME_MAX];
@@ -592,6 +617,15 @@ void drv_scan(void)
 
     drv_scan_reset();
     n = list_files(names, SCAN_FILES, &over);
+    if (n < 0) {
+        /* The directory stopped answering partway through. What was read is
+         * not a shorter list of drivers, it is an unknown fraction of one, and
+         * a menu built from it would depend on how far a failing disk happened
+         * to get. The built-in table stands as it is, nothing dynamic is
+         * added, and /D says so. */
+        note_skip("*.DRV", "the directory could not be read to the end");
+        return;
+    }
     if (over > 0) {
         sprintf(why, "%d of them past the %d this can look at", over,
                 SCAN_FILES - 1);

@@ -1,24 +1,18 @@
-# The driver block
+# Driver block specification
 
-A way for a driver to describe itself to `skidcfg`, so that adding a driver to
-Stunts does not mean rebuilding `skidcfg` and does not mean shipping a second
-file beside the driver.
+Version 1. Magic `SKIDCFGDRV01`.
 
-A driver carries a small block of text inside its own binary. `skidcfg` reads
-every driver in the game directory, finds the blocks, and grows its menus. The
-row exists only if the driver is on the disk, which is the point: you cannot
-select a driver you do not have, and a driver you do not have is a game that
-does not start. `LOAD.EXE` says `Can't find driver!`, waits for a key and
-returns to DOS. Measured both ways round: with `MT15.DRV` beside the game and
-`SETUP.DAT` naming it the game runs and keys go into it, and with the file
-taken away the same command line is back at the prompt.
+A driver describes itself to `skidcfg` by carrying a block of text inside
+its own binary. `skidcfg` scans the game directory, reads the blocks and
+adds a menu row for each. No rebuild of `skidcfg`, no file beside the
+driver.
 
-The block says what to call the driver and what to tell somebody about it.
-Everything else is `skidcfg`'s problem, including everything that could put two
-drivers in conflict.
+A row exists only while its driver file is on the disk. A `SETUP.DAT`
+naming a driver that is not there stops the game: `LOAD.EXE` prints
+`Can't find driver!`, waits for a key and returns to DOS.
 
 
-## The block
+## 1. Example
 
 ```
 SKIDCFGDRV01
@@ -30,405 +24,286 @@ help It uses the GS sound set, which a General MIDI module does not have.
 SKIDCFGEND
 ```
 
-That is a complete, valid block for `SC15.DRV`. There is nothing else to write.
+Complete and valid for `SC15.DRV`.
 
-The two names are both on the screen and they are not the same name. `label`
-is the row inside the menu once it is open. `brief` is the reminder left on the
-main menu row when the menu is shut, so that the setting is readable without
-opening anything:
+
+## 2. Grammar
 
 ```
-   Video display                                 (MCGA)
-   Sound option                                 (SC-55)
-   Install game to hard disk
-   Exit
+block   = "SKIDCFGDRV01" LF *line "SKIDCFGEND" LF
+line    = entry / comment / blank
+entry   = key [ SP value ] LF
+comment = *SP ";" *CHAR LF
 ```
 
+- `SKIDCFGDRV01` and `SKIDCFGEND` each occupy a whole line. Nothing may
+  follow either on its line.
+- Bytes before the magic are not examined, so a block may be appended to a
+  finished binary.
+- A key is a key only at the start of a line. Inside a value the key words
+  are ordinary text.
+- A value is the rest of the line with leading and trailing spaces removed.
+  No quoting, no escapes.
+- Keys may appear in any order. `help` lines are read in the order they
+  appear.
+- A key given twice is an error, not an override. `help` is the exception.
+- An unknown key is ignored. See section 7.
+- Blank lines and comment lines are ignored. Both count against the limits
+  in section 4.
+- Lines end with LF (`0Ah`). A CR before the LF is accepted and discarded.
+  The line ending is not part of the line, so the 128 character limit is
+  128 characters under LF and CRLF alike.
+- Values are seven-bit ASCII, `20h` to `7Eh`. Any other byte is refused,
+  tab included: the text is drawn under whatever code page the machine
+  booted with, and 437, 850 and 860 disagree above `7Eh`. Comments are
+  exempt, being never drawn.
 
-## Keys
-
-| key | required | value | what it is |
-|---|---|---|---|
-| `sound` *or* `video` | yes, exactly one | none | which menu this belongs in |
-| `label` | yes | text | the row in the submenu, with the menu open |
-| `brief` | yes | text | the short name on the main menu row, with it shut; no brackets |
-| `help` | no | text | the F1 paragraph; repeat the key to keep your source readable |
-| `mode` | video only, required | text | everything after `/u`: `SVGA`, or `VGA /v` |
-| `disk` | video only | `A` or `B` | which game disk the mode's files came from |
-
-A value is the rest of the line with the spaces trimmed off both ends.
-There is no quoting and there are no escapes, because nothing you write here
-has whitespace that matters. Where it does matter, `skidcfg` puts it there.
-
-Keys may come in any order, except that `help` lines are read in the order they
-appear. Giving a key twice is an error, not an override. `help` is the one key
-meant to be repeated, and repeating it is purely so your source stays readable.
-
-A key is only a key at the start of a line. The keys are ordinary English
-words and a help paragraph is ordinary English, so they meet constantly; they
-cannot collide, because every line of a paragraph carries its own `help` and
-what follows it is text to the end of the line. This is a valid block and means
-what it looks like it means:
+Because a key is only recognised at the start of a line, this is a valid
+block, terminator included:
 
 ```
 help The sound and video label on this card
 help needs no help; brief mode disk SKIDCFGEND
 ```
 
-Even the terminator is safe there: `SKIDCFGEND` ends the block only on a line
-of its own.
-
-Write `brief` as a bare name. The brackets are `skidcfg`'s, the same as the
-window border and the highlight are: they are how that screen has drawn a
-shut menu since 1991, not anything about your driver. `SC-55` is what you
-write and `(SC-55)` is what appears. A `brief` containing a bracket is
-rejected rather than doubled up, so getting this wrong is an error message and
-not a screen reading `((SC-55))`.
-
-It is required and there is no default. Deriving one from the label would put
-`(Roland SC-55)` where the original writes `(MT-32)` for `Roland MT-32`:
-choosing what a thing is called when there is no room is a judgement, and we
-would rather refuse than put a name on the screen nobody chose. The six stock
-rows are the house style: `No sound`, `PC speaker`, `Tandy`, `Ad Lib`,
-`Sound Blaster`, `MT-32`. Shortest name that is still unambiguous.
-
-Leave `help` out and the row gets `No Help Available`, which is what the
-original shows for a row it has nothing to say about. That one is a real
-default rather than a guess: it is the original's own words for the case, and
-it says that nothing was written rather than inventing something.
-
-
-### Repeated help lines, and the space you cannot see
-
-Each `help` line is trimmed and then joined to the next with exactly one
-space. Both of these are the same block:
+A line whose first non-blank character is `;` is a comment. There is no
+key for authorship; sign the driver in comments.
 
 ```
-help ...on the MPU-401 port.
-help It uses the GS sound set...
-```
-
-```
-help ...on the MPU-401 port.<space>
-help It uses the GS sound set...
-```
-
-You cannot run two words together by forgetting a trailing space, and you
-cannot open a double gap by leaving one in. This is the rule for every value in
-the block and it is the reason there is no quoting: a character you cannot see
-never changes what the block means. If it ever did, you would have to be able
-to see it, and then it would need quotes.
-
-A single long `help` line therefore means exactly the same thing as several
-short ones. Break them wherever your assembler and your diff are happiest.
-
-A `help` with nothing after it is a blank line, and starts a new paragraph.
-
-
-## Anything else you want to say
-
-Put it in a comment. A line whose first non-blank character is `;` is ignored,
-and there is no limit on how many there are beyond the size of the block, so
-the block is the natural place for whoever made the driver to sign it:
-
-```
-SKIDCFGDRV01
 ; SC15.DRV - Roland Sound Canvas driver for Stunts 1.1
 ; Copyright (c) 2026 Vinicius Ferrao. MIT licence.
 ; https://github.com/viniciusferrao/skidsc55
-sound
-label Roland SC-55
-brief SC-55
-help Select if you have a Roland Sound Canvas on the MPU-401 port.
-help It uses the GS sound set, which a General MIDI module does not have.
-SKIDCFGEND
 ```
 
-There is no key for it, because there is nowhere to show one: the screen is a
-reproduction of one drawn in 1991 and its title box holds exactly one program's
-claim. A comment reaches the reader a copyright line is for anyway, which is
-whoever runs `STRINGS` over the driver or finds the block in a hex dump. It
-costs the block's 2048 bytes and 64 lines like any other text.
 
+## 3. Keys
 
-## What you do not write, and why
+| key | required | value | use |
+|---|---|---|---|
+| `sound` / `video` | exactly one | none | which menu |
+| `label` | yes | text | submenu row |
+| `brief` | yes | text | main menu row |
+| `help` | no | text | F1 paragraph, repeatable |
+| `mode` | video only | text | everything after `/u` |
+| `disk` | video only | `A` or `B` | game disk the mode came from |
 
-Not the command line switch. `LOAD.EXE` derives the driver's filename from
-the switch: `/sxx` loads `XX15.DRV`. So your driver's switch is not a choice, it
-is your filename, and `skidcfg` works it out. Two drivers cannot propose the
-same switch, because two files cannot share a name in one directory.
+### 3.1 label and brief
 
-Either character may be a letter or a digit, in any order. Measured on both
-halves, the game loading the file and `skidcfg` offering the row: `SC15.DRV`
-copied to `ZZ15.DRV` answers to `/szz` and stops the game the moment the file is
-removed, and `M015.DRV`, `0415.DRV`, `4X15.DRV`, `7E15.DRV` and `X415.DRV` all
-answer to their own switch. A name beginning with a digit is a perfectly good
-driver name, which matters because two characters is the whole namespace and a
-scheme that wants to number its drivers has nowhere else to put the number.
-
-Exactly two characters, and this is the one place the format is unforgiving,
-because the game is. `LOAD.EXE` reads two after `/s` and discards the rest, so
-`/sscsb` does not fail: it loads `SC15.DRV` while looking like it asks for
-something else. Measured by removing `SC15.DRV`, at which point `/sscsb` stopped
-the game rather than falling back to the `SCSB15.DRV` sitting beside it. A driver
-named `SCSB15.DRV` can never be reached, so `skidcfg` refuses to put one on a
-menu and says why.
-
-Two is also all the voice banks allow. They are `<prefix>SKIDMS.VCE` and
-`SKIDMS` is six characters, so `SCSKIDMS.VCE` is exactly the eight that 8.3
-permits and a three character prefix could not name its own music bank. The
-limit is over-determined; do not design around getting past it.
-
-A name is therefore an identity and not a description: `CB15.DRV` or `M015.DRV`,
-whatever is free. The description is what `label` and `brief` are for, and they
-were never required to be the same thing.
-
-Try a prefix before you commit to it. `LOAD.EXE` knows some switches
-already and overrides the derivation for those, which is what `SB` is: `/ssb`
-loads `AD15.DRV`, and an `SB15.DRV` put beside it is never opened. There is no
-way to know from the outside how many others are like that, so the only honest
-test is to put your driver under the name, remove anything it might fall back
-to, and check that the game plays it.
-
-Taken by the drivers the game ships: `PC`, `AD`, `MT`, `TD`. Taken by
-skidsc55: `SC`. Spoken for by `LOAD.EXE` and unusable: `SB`. Tried and found
-free: `GM`, `GU`, `CB`, `X0`, `XS`, `M0`, `04`, `4X`, `7E`, `X4`.
-
-Not the index. The number `skidcfg` writes to line 1 of `SETUP.DAT` is
-allocated by `skidcfg`, in a fixed order, starting above the stock rows. You
-never see it and cannot collide with anybody over it.
-
-That is safe because line 1 is not what identifies a driver. Line 2 is: it is
-the command line the game actually obeys, and `skidcfg` matches on that string.
-Line 1's number is a hint used only when line 2 cannot be read, and `skidcfg`
-says so out loud when it has to fall back to it. Sound 0 to 5 and video 0 to 4
-stay nailed to the six stock sound rows and five stock video modes for ever, so
-a `SETUP.DAT` written by the original `SETUP.EXE` in 1991 still means what it
-meant; allocation simply starts above them.
-
-Not any part of `SETUP.DAT`. `skidcfg` builds line 2 out of the video and
-sound fragments with the spacing the game expects, and line 4 out of `disk`.
-
-Not the shape of the help window. Your `help` text is one paragraph.
-`skidcfg` wraps it to the window and takes the window's height from how many
-lines that came to.
-
-`mode` is the whole argument, not just the name. Whatever the row's command
-line puts after `/u`, flags and all. `SVGA` for a mode with no flags, and
-`VGA /v` for the entry the original already has, whose command line is
-`load.exe /u VGA /v `. This matters in one place and matters a lot there: the
-original ships a VGA row with an index, a command line and no label, and a
-block naming exactly that command line fills it in and keeps index 5, which is
-the number an existing `SETUP.DAT` already uses. `mode VGA` is a different
-command line, so it is a different mode: it gets a row and an index of its own,
-and it will not start the game unless `LOAD.EXE` also knows a `VGA` without the
-flag. Nothing warns about this, because there is nothing wrong with it; it is
-just not the row you meant. `DEVELOP.md` writes that block out in full.
-
-Not which file a video mode needs. A mode is `NAME.COD` plus `NAME.HDR`,
-and `skidcfg` works the name out of your `mode` so it can take the row off the
-menu when the file is not there. Without it the game stops with `Unable to size
-NAME.hdr.` rather than starting, which is the same reason a sound row goes when
-its driver does.
-
-
-## One driver, one device
-
-The game takes one sound device. Its command line accepts more than one `/s`
-switch and the last one wins: `/ssc /sad` plays the Ad Lib, `/sad /ssc` plays
-the Sound Canvas, both measured. There is no way to write a `SETUP.DAT` that
-asks for music on one card and effects on another, and we will not grow a way
-to describe one, because a menu row the game cannot obey is worse than a row
-that is not there.
-
-A driver that sends music to one device and effects to another is still a
-perfectly good driver, and to `skidcfg` it is one driver like any other: one
-file, one switch, one row, its own two voice banks.
+Both are drawn and they are not the same string. `label` is the row inside
+the open submenu. `brief` is the reminder on the main menu row when the
+submenu is shut:
 
 ```
-SKIDCFGDRV01
-sound
-label Sound Canvas and Sound Blaster
-brief SC-55 + SB
-help Music on a Roland Sound Canvas at the MPU-401 port, and engine
-help sound on a Sound Blaster.
-SKIDCFGEND
+   Video display                                 (MCGA)
+   Sound option                                 (SC-55)
 ```
 
-The format needs nothing added for it. The combining happens inside the driver,
-because the driver is the only thing the game gives the job to.
+Write `brief` bare. `skidcfg` adds the brackets, so `SC-55` gives
+`(SC-55)`, and a `brief` containing a bracket is refused rather than
+doubled. There is no default. The stock rows are the house style, shortest
+name still unambiguous: `No sound`, `PC speaker`, `Tandy`, `Ad Lib`,
+`Sound Blaster`, `MT-32`.
+
+### 3.2 help
+
+Lines are trimmed and joined with exactly one space, so a trailing space
+can neither run two words together nor open a double gap. One long line
+and several short ones mean the same thing. A `help` with no value is a
+blank line and starts a new paragraph. A block with no `help` at all gets
+`No Help Available`, which is what the original shows for a row it has
+nothing to say about.
+
+### 3.3 mode
+
+The whole argument after `/u`, flags included. `SVGA` for a mode with no
+flags; `VGA /v` for the row the original ships, whose command line is
+`load.exe /u VGA /v `.
+
+A block naming exactly that command line fills in the original's
+unlabelled VGA row and keeps index 5, which is the number an existing
+`SETUP.DAT` already uses. `mode VGA` is a different command line and
+therefore a different mode: its own row, its own index, and it will not
+start the game unless `LOAD.EXE` also knows a `VGA` without the flag.
+Nothing warns about this, because nothing is wrong with it.
 
 
-## When this format changes
+## 4. Limits
 
-It will, and a driver written against version 1 has to keep working. Two
-mechanisms, and which one applies depends on whether an old reader would be
-wrong or merely incomplete.
+Every limit is checked. Nothing is truncated to fit. Exceeding one is an
+error naming the file, the field and the number.
 
-A key `skidcfg` does not know is ignored. So a later version can add an
-optional key, and a driver carrying it still works with every `skidcfg` that
-came before: the older one reads the rest of the block and does without. This
-is the usual case and it needs nothing from you. It is also why there are no
-reserved bytes here. A text format extends by gaining a word, not by leaving
-room for one.
+| field | limit | source |
+|---|---|---|
+| `label`, sound | 31 | submenu window, columns 12 to 42 |
+| `label`, video | 24 | submenu window, columns 14 to 37 |
+| `brief` | 21, no brackets | 23 on screen with the brackets |
+| `mode` | 16 | keeps `SETUP.DAT` line 2 inside 80 |
+| `disk` | 1, `A` or `B` | it is a disk label |
+| longest `help` word | 26 | a longer one cannot be wrapped |
+| `help`, wrapped | 15 lines of 26 | help window interior |
 
-A typo costs little under that rule. Misspell a required key and the block is
-refused for the key being missing, which is the same message in the same place;
-misspell `help` and the row says `No Help Available`, which you see the first
-time you press F1.
+The help window's interior is columns 49 to 74, which is the 26. Its
+height is one row per wrapped line, growing from row 7 until its shadow
+would reach the footer on row 24, which is the 15. Both are
+`DRV_HELP_COLS` and `DRV_HELP_ROWS` in `src/drivers.h`.
 
-The magic carries a version for the other case. A change that would make an
-old reader wrong rather than incomplete, a new meaning for a key that already
-exists or a different rule for an existing value, takes `SKIDCFGDRV02`. An
-older `skidcfg` does not recognise the magic, so it skips the block whole and
-the row simply does not appear, which is the right failure: a driver missing
-from a menu is recoverable, a driver described wrongly on one is not.
+What the parser will hold, so a block cannot make it read past anything:
 
-We will not add a second, denser encoding of this format. A compressed
-variant would need a decoder inside `SKIDCFG.EXE` larger than everything it
-could ever save. The structure a packer could attack is about fifty bytes of a
-block, against a driver well over a thousand, and it costs what being plain
-text buys: `STRINGS` finds it, a hex editor fixes a typo in it, and an
-assembler emits it in a few lines of `db`. If that trade ever changes, it is
-a `SKIDCFGDRV02` and not a second format read alongside this one.
+| | limit |
+|---|---|
+| whole block, magic and terminator included | 2048 bytes |
+| any single line | 128 characters |
+| lines in the block | 64 |
+| `help` keys, before joining | 32 |
+
+A block that runs past 2048 bytes with no `SKIDCFGEND` is not a block.
+
+Each menu holds ten rows, a window growing one row per entry until its
+shadow has to clear the footer. Six sound rows and five video modes are
+built in, so four sound drivers and five video modes can be added. An
+eleventh is refused and named rather than dropped off the screen.
 
 
-## Where the block goes
-
-Anywhere in the file. `skidcfg` searches the whole image for the magic, in
-overlapping reads so a magic lying across a read boundary is still found. There
-is no required offset, no header and no pointer table: put the bytes wherever
-your linker puts a string constant.
+## 5. Where blocks are found
 
 `skidcfg` reads, in the current directory:
 
 - every `*.DRV`, where a block describes a sound driver
 - `LOAD.EXE`, where a block describes a video mode
 
-`LOAD.EXE` is on the list because video modes are not drivers. A mode is a
-`/u NAME` switch plus `NAME.COD`, about fifty kilobytes of graphics code, and a
-thirty byte `NAME.HDR`, and the name is inside `LOAD.EXE`. That is measured:
-`CGA.COD` and `CGA.HDR` copied to `ZZ.COD` and `ZZ.HDR` and asked for as
-`/u ZZ` does not start the game, while `/u CGA` beside it does.
+It opens nothing else, and the only file it writes is `SETUP.DAT`.
 
-So video is the exact opposite of sound. A sound driver's switch *is* its
-filename, which is why one can appear simply by being copied in. A video mode
-cannot appear that way at all: adding one means patching `LOAD.EXE` to know the
-name. The block therefore goes in `LOAD.EXE`, which is the binary that learned
-the mode and so the only one that can honestly describe it, and it needs a
-`mode` key because there is no filename to derive one from.
+The scan is 8.3 names and nothing else. A driver's switch is two characters of
+its filename, so a name that does not fit 8.3 cannot be a driver identity at
+all. On a host that allows longer names such a file is passed over silently
+rather than listed as skipped: it was never a candidate to begin with.
 
-Every block in the file is read, in the order they appear, and a carrier may
-hold more than one. That matters for `LOAD.EXE`, which is where video modes
-live and a patched one may know several; a `.DRV` is one driver and has no
-reason to carry a second block, but nothing stops it and nothing has to.
+A block may sit anywhere in the file. The whole image is searched in
+overlapping reads, so a magic across a read boundary is still found. No
+required offset, no header, no pointer table.
 
-The search for the next one begins past the `SKIDCFGEND` of the one before, so
-a block is free to quote the magic in a comment the way this document does. Ten
-blocks in one file is where it stops looking, which is the whole menu, and it
-says so rather than going quiet.
+Every block in a file is read, in order. The search for the next begins
+past the previous `SKIDCFGEND`, so a block may quote the magic in a
+comment. Ten blocks in one file is where it stops looking, and it says so.
 
-Nothing else is opened, and `skidcfg` never writes to any of them. It reads
-`SETUP.DAT` and writes `SETUP.DAT`, and that is the only file it changes.
+The four drivers Stunts 1.1 ships carry no block. Their six sound rows are
+built into `src/drvtab.h`.
 
-The four drivers Stunts 1.1 ships carry no block and are not expected to. Their
-six sound rows are built into `skidcfg`; see `src/drvtab.h`.
+### 5.1 Why video modes live in LOAD.EXE
 
+A mode is not a driver. It is a `/u NAME` switch, a `NAME.COD` holding
+about fifty kilobytes of graphics code, a thirty byte `NAME.HDR`, and the
+name itself, which is inside `LOAD.EXE`: `CGA.COD` and `CGA.HDR` copied to
+`ZZ.COD` and `ZZ.HDR` and asked for as `/u ZZ` does not start the game,
+while `/u CGA` beside it does.
 
-## Writing the bytes
+Adding a mode means patching `LOAD.EXE`, which is therefore the only
+binary that can honestly describe one, and is why `mode` is required:
+there is no filename to derive it from.
 
-- Lines end with LF (`0Ah`). A CR before the LF is accepted and ignored, so
-  a block written by a DOS text editor works, but LF is what to emit.
-- `SKIDCFGDRV01` and `SKIDCFGEND` each take a whole line, meaning nothing
-  follows either of them on the line it is on; that much is checked. What comes
-  *before* the magic is not looked at, and deliberately, because appending a
-  block to a finished binary is a thing people will do and the last byte of a
-  binary is whatever it is. The `01` is the format version and is part of the
-  magic, so a later format uses a different one and an old `skidcfg` skips a
-  block it would misread rather than guessing. Two digits because a version is
-  easier to recognise as one: nothing counts them or compares them, a reader
-  matches the whole magic or does not.
-- Seven-bit ASCII only, `20h` to `7Eh`, and this is checked rather than
-  merely asked for: a line with a byte outside it is a refusal. Not fussiness:
-  the text lands on a screen whose code page is whatever the machine booted
-  with, and the bytes above `7Eh` are exactly the ones 437, 850 and 860
-  disagree about. A tab is out for the same kind of reason, having a width on
-  screen that nothing counting characters can see. `src/version.h` explains why
-  the author's own name is spelt without its accents; the same reasoning
-  applies to every string here.
-
-  A comment is the exception, and deliberately: it is never drawn, so nothing
-  above `7Eh` in one can land anywhere, and somebody's name is their own to
-  spell. Write the accents in a `;` line if you want them. `label`, `brief`,
-  `help`, `mode` and `disk` are what the rule holds for.
-- Blank lines are ignored, and so is a line whose first non-blank character
-  is `;`. Both still count against the size and line limits below.
-- 2048 bytes maximum, magic and terminator included. A block that runs past
-  that without a `SKIDCFGEND` is not a block.
+`skidcfg` derives `NAME` from `mode` and takes the row off the menu when
+`NAME.COD` or `NAME.HDR` is missing. Without that the game stops with
+`Unable to size NAME.hdr.`
 
 
-## Limits
+## 6. What the block does not carry
 
-Every one of these is checked, and nothing is truncated to fit. A label too
-long is a label somebody chose, and shortening it silently would put a name on
-the screen its author never wrote. Over a limit is an error naming the file,
-the field and the number.
+### 6.1 The command line switch
 
-What you write, and where each number comes from:
+`LOAD.EXE` derives the driver's filename from the switch: `/sxx` loads
+`XX15.DRV`. The switch is the filename, and `skidcfg` works it out. Two
+drivers cannot propose the same switch, because two files cannot share a
+name in one directory.
 
-| field | limit | where the number comes from |
-|---|---|---|
-| `label`, sound | 31 characters | submenu window, text columns 12 to 42 |
-| `label`, video | 24 characters | submenu window, text columns 14 to 37 |
-| `brief` | 21 characters, no brackets | 23 on the screen once `skidcfg` adds them |
-| `mode` | 16 characters | keeps line 2 of `SETUP.DAT` inside its 80 |
-| `disk` | 1 character, `A` or `B` | it is a disk label |
-| longest word in `help` | 26 characters | a longer one cannot be wrapped at all |
-| `help` after wrapping | 15 lines of 26 columns | see below |
+- Exactly two characters. `LOAD.EXE` reads two after `/s` and discards the
+  rest, so `/sscsb` does not fail: it loads `SC15.DRV` while looking like
+  it asks for something else. A driver named `SCSB15.DRV` can never be
+  reached, so `skidcfg` refuses to put one on a menu and says why.
+- Either character may be a letter or a digit, in any order. `M015.DRV`,
+  `0415.DRV`, `4X15.DRV`, `7E15.DRV` and `X415.DRV` all answer to their
+  own switch. Two characters is the whole namespace, so a scheme that
+  numbers its drivers has nowhere else to put the number.
+- Two is also all the voice banks allow. They are `<prefix>SKIDMS.VCE`,
+  and `SKIDMS` is six characters, so `SCSKIDMS.VCE` is exactly the eight
+  that 8.3 permits.
+- `LOAD.EXE` knows some switches already and overrides the derivation for
+  them: `/ssb` loads `AD15.DRV`, and an `SB15.DRV` beside it is never
+  opened. There is no way to enumerate these from outside. Test a prefix
+  before committing to it, by putting the driver under the name, removing
+  anything it might fall back to, and checking that the game plays it.
 
-The help window's interior is columns 49 to 74, which is the 26. Its height is
-one row per wrapped line and it grows downwards from row 7 until its shadow
-would reach the footer on row 24, which is the 15. Both numbers are
-`DRV_HELP_COLS` and `DRV_HELP_ROWS` in `src/drivers.h`, and the self check holds
-every paragraph in the program against them, transcribed and wrapped alike.
-
-The original's own paragraphs never exceed 24 columns, but that is its
-typography rather than a limit, and wrapping to 24 would leave two columns of
-the window permanently empty.
-
-And what the parser will hold, so that a block cannot make it read past
-anything:
-
-| | limit |
+| prefixes | status |
 |---|---|
-| the whole block, magic and terminator included | 2048 bytes |
-| any single line | 128 characters, not counting the line ending |
-| lines in the block | 64 |
-| `help` keys, before they are joined | 32 |
+| `PC` `AD` `MT` `TD` | the drivers the game ships |
+| `SC` | skidsc55 |
+| `SB` | claimed by `LOAD.EXE`, unusable |
+| `GM` `GU` `CB` `X0` `XS` `M0` `04` `4X` `7E` `X4` | tried, free |
 
-The line ending is not part of the line, so 128 characters is 128 characters
-whether you end them with LF or CRLF. It is worth stating because the obvious
-implementation gets it wrong: count the CR and the limit quietly becomes 127
-for anyone using a DOS editor, which is the one audience the CR is accepted
-for.
+A name is an identity, not a description. `label` and `brief` are the
+description.
 
-Menu capacity is ten rows, again because a window grows a row per entry and
-its shadow has to clear the footer. Six sound rows and five video modes are
-built in, so four sound drivers and five video modes can be added. An
-eleventh is refused and named rather than dropped off the bottom of the screen.
+### 6.2 The menu index
+
+`skidcfg` allocates the number it writes to line 1 of `SETUP.DAT`, in a
+fixed order, starting above the stock rows.
+
+Line 1 does not identify a driver. Line 2 does: it is the command line the
+game obeys, and `skidcfg` matches on that string. Line 1 is a hint used
+only when line 2 cannot be read, and `skidcfg` says so when it falls back
+to it. Sound 0 to 5 and video 0 to 4 stay nailed to the stock rows for
+ever, so a `SETUP.DAT` written by the original `SETUP.EXE` in 1991 still
+means what it meant.
+
+### 6.3 The rest of SETUP.DAT, and the help window
+
+`skidcfg` builds line 2 from the video and sound fragments with the
+spacing the game expects, and line 4 from `disk`. The `help` text is one
+paragraph: `skidcfg` wraps it to the window and takes the window's height
+from how many lines that came to.
+
+### 6.4 A second sound device
+
+The game takes one. Its command line accepts more than one `/s` and the
+last wins: `/ssc /sad` plays the Ad Lib, `/sad /ssc` plays the Sound
+Canvas. No `SETUP.DAT` can ask for music on one card and effects on
+another, and the format will not grow a way to describe one.
+
+A driver that splits music and effects across two devices is one driver
+like any other: one file, one switch, one row, its own two voice banks.
+The combining happens inside the driver, which is the only thing the game
+gives the job to.
 
 
-## What happens to a bad block
+## 7. Versioning
 
-Nothing silent, ever. A block that is malformed, overruns a limit, or has
-nowhere left on the menu is skipped, and `skidcfg` names the file and the
-reason.
+Additive change: an unknown key is ignored, so a later version may add an
+optional key and a driver carrying it still works with every `skidcfg`
+released before. This is why there are no reserved bytes. A text format
+extends by gaining a word.
 
-`SKIDCFG /D` prints the merged table and exits, without opening the setup
-screen, the same as `/V` and `/?` do. It exists because the only other symptom
-of a bad block is a row that is not there, which tells you nothing: it looks
-identical whether `skidcfg` never opened your file, opened it and found no
-block, or read the block and refused it.
+Breaking change: a new meaning for an existing key, or a different rule
+for an existing value, takes `SKIDCFGDRV02`. An older `skidcfg` does not
+recognise the magic, skips the block whole, and the row does not appear. A
+driver missing from a menu is recoverable; a driver described wrongly on
+one is not.
+
+The `01` is part of the magic. Nothing counts or compares it: a reader
+matches the whole string or does not.
+
+A misspelt required key is refused for that key being missing. A misspelt
+`help` gives `No Help Available`.
+
+
+## 8. Diagnostics
+
+A block that is malformed, exceeds a limit, or has nowhere left on the
+menu is skipped, and `skidcfg` names the file and the reason. Nothing is
+silent.
+
+`SKIDCFG /D` prints the merged table and exits without opening the setup
+screen. The only other symptom of a bad block is a row that is not there,
+which looks identical whether `skidcfg` never opened the file, found no
+block in it, or read a block and refused it.
 
 ```
 C:\STUNTS>SKIDCFG /D
@@ -454,79 +329,63 @@ Skipped
    QZ15.DRV  no SKIDCFGEND in the first 2048 bytes
 ```
 
-Reading across: the index `skidcfg` allocated, the switch it derived from the
-filename, the file the row came from, and then both names as they will be
-drawn, the `label` with the `brief` after it in the brackets `skidcfg` adds.
-
-`Skipped` is the half that matters while you are writing a block. A file and a
-reason, for every block that was read and not used.
+Columns: the index `skidcfg` allocated, the switch it derived from the
+filename, the file the row came from, and both names as they will be
+drawn, `label` with `brief` in the brackets `skidcfg` adds. `Skipped`
+gives a file and a reason for every block read and not used.
 
 
-## Growing the driver is not free
+## 9. Driver size
 
-Adding a block makes the driver file bigger, and that is a change to the game
-rather than only to `skidcfg`. One of the four stock drivers does not tolerate
-it, which is measured.
+Adding a block makes the driver file bigger, which is a change to the game
+and not only to `skidcfg`. One of the four stock drivers does not tolerate
+it.
 
-`PC15.DRV`, the PC speaker driver, is 2227 bytes. Grown past roughly 2400 bytes
-it still loads and the game still runs, but the music loses about a third of
-its note attacks and the overall level drops a fifth. It reproduces, it depends
-on the size alone and not on what the added bytes are, and there is no error
-message of any kind. `AD15.DRV` and `SC15.DRV` show no such effect, and
-`SC15.DRV` was tested to 2440 bytes, past the point where `PC15.DRV` fails,
-with no change at all.
+`PC15.DRV`, the PC speaker driver, is 2227 bytes. Grown past roughly 2400
+bytes it still loads and the game still runs, but the music loses about a
+third of its note attacks and the level drops a fifth. It reproduces, it
+depends on the size alone and not on what the added bytes are, and there
+is no error of any kind. `AD15.DRV` and `SC15.DRV` show no such effect;
+`SC15.DRV` was tested to 2440 bytes with no change.
 
-So the rule is: measure the driver you grow. The method needs no hardware.
+Measure any driver you grow. The method needs no hardware. Only size
+matters, so a run of zeros of the right length stands in for a real block.
 
-1. Point `SETUP.DAT` at the driver under test and have the autoexec run the
-   game and then write a marker file, so a game that fell back to DOS is
-   distinguishable from one that is still running.
-2. Capture the emulator's audio with `SDL_AUDIODRIVER=disk` and
-   `SDL_DISKAUDIOFILE`, with `SDL_VIDEODRIVER=dummy`. The mixer writes
-   `AUDIO_F32`; reading it as signed 16 bit produces convincing nonsense. MIDI
-   only reaches the mixer if the midi device is emulated in software.
-3. Capture the stock driver twice. Two identical runs establish the noise
-   floor, and without it a single difference means nothing.
-4. Capture the grown driver, and compare level, note onset count and the
+1. Point `SETUP.DAT` at the driver and have the autoexec run the game and
+   then write a marker file, so a game that fell back to DOS is
+   distinguishable from one still running.
+2. Capture the emulator's audio with `SDL_AUDIODRIVER=disk`,
+   `SDL_DISKAUDIOFILE` and `SDL_VIDEODRIVER=dummy`. The mixer writes
+   `AUDIO_F32`; reading it as signed 16 bit produces convincing nonsense.
+   MIDI reaches the mixer only if the device is emulated in software.
+3. Capture the stock driver twice, for a noise floor. Without one a single
+   difference means nothing.
+4. Capture the grown driver and compare level, note onset count and the
    proportion of silent frames.
-5. Measure silence and onsets after the music starts, not from the first
-   sample. A cold host file cache delays the game by about a second, which
-   shows up as a large difference in whole-capture silence and is an artefact
-   of the harness rather than anything about the driver.
-
-Content does not matter, only size, so a block of zeros of the right length is
-a valid stand-in before the real block exists.
+5. Measure silence and onsets from where the music starts, not from the
+   first sample. A cold host file cache delays the game by about a second,
+   which reads as a large difference in whole-capture silence.
 
 
-## Worked example
+## 10. Notes for implementers
 
-`SC15.DRV` is built with TASM and wlink as `format dos com`, and carries the
-commented block from *Anything else you want to say*. The block is a string
-constant in the driver image, placed by the build, rather than appended to a
-finished binary: appending is what was measured above, and while `SC15.DRV`
-tolerated it, a driver should carry its description as part of what it is. Its
-switch, `/ssc`, comes from its own name and is not in the block.
+`SC15.DRV` is built with TASM and wlink as `format dos com`, and its block
+is a string constant placed by the build rather than appended to a
+finished binary. The block is the last thing in the file, so `SKIDCFGEND`
+and its newline are the driver's final bytes. A scanner that expects bytes
+after the terminator passes every hand-written fixture and fails on the
+real thing.
 
-That block is the last thing in the file, so `SKIDCFGEND` and its newline are
-the driver's final bytes. It is what a linker does with a trailing string
-constant, and it is worth a reader checking itself against: a scanner that
-expects bytes after the terminator works on every fixture somebody writes by
-hand and fails on the real thing.
 
-Its help paragraph says what it says on purpose. The SC-55 requirement is a
-real one: the driver uses the GS sound set, and a General MIDI module will play
-the music with the wrong instruments rather than not at all. A paragraph that
-implied any GM module would do would be the thing that caused that.
+## 11. Out of scope
 
-## What this format does not tell you
-
-How a Stunts driver works inside. `skidcfg` never looks: it derives the switch
-from the filename, reads the block, and executes nothing. So a block is all it
-takes to appear on the menu, and nothing here says what the game will then
+How a Stunts driver works inside. `skidcfg` derives the switch from the
+filename, reads the block, and executes nothing, so a block is all it
+takes to appear on a menu and nothing here says what the game will then
 call.
 
-For that, [UnifiedMT15](https://github.com/LowLevelMahn/UnifiedMT15) by
-LowLevelMahn is an independent reverse engineering of `MT15.DRV` in C, and is
-the best public account of the slot layout and the calling conventions a
-driver has to satisfy. It is a reference rather than a dependency: nothing in
-`skidcfg` is derived from it.
+[UnifiedMT15](https://github.com/LowLevelMahn/UnifiedMT15) by LowLevelMahn
+is an independent reverse engineering of `MT15.DRV` in C, and the best
+public account of the slot layout and calling conventions a driver has to
+satisfy. It is a reference, not a dependency: nothing in `skidcfg` derives
+from it.

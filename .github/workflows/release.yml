@@ -165,8 +165,18 @@ jobs:
         id: v
         run: |
           set -e
-          VER=$(sed -n 's/^#define SKIDCFG_VERSION "\(.*\)"/\1/p' src/version.h)
+          # tr first. .gitattributes checks every .h out CRLF for Turbo C, so
+          # the line ends 0D 0A and the substitution above leaves the 0D
+          # outside the capture and in the value. The version then compares
+          # unequal to its own tag and every name built from it carries a
+          # carriage return.
+          VER=$(tr -d '\r' < src/version.h \
+                | sed -n 's/^#define SKIDCFG_VERSION "\(.*\)"/\1/p')
           [ -n "$VER" ] || { echo "no SKIDCFG_VERSION in src/version.h"; exit 1; }
+          case $VER in
+            *[!0-9.]*) echo "SKIDCFG_VERSION '$VER' is not digits and dots"
+                       exit 1;;
+          esac
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG=${GITHUB_REF_NAME#v}
             [ "$TAG" = "$VER" ] || {
@@ -262,6 +272,20 @@ jobs:
           unzip -l "${{ steps.v.outputs.winzip }}"
           cat SHA256SUMS
 
+          # Everything SHA256SUMS names has to be something a reader can
+          # actually fetch. A checksum file listing an archive the release page
+          # does not carry is worse than not listing it, because it reads as
+          # proof the file is there. This is the list the publish step attaches;
+          # the two are kept honest against each other rather than by eye.
+          PUBLISH="${{ steps.v.outputs.doszip }} ${{ steps.v.outputs.winzip }}"
+          while read -r _ name; do
+            case " $PUBLISH SHA256SUMS " in
+              *" $name "*) ;;
+              *) echo "SHA256SUMS names $name, which is not published"
+                 exit 1;;
+            esac
+          done < SHA256SUMS
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ steps.v.outputs.ver }}
@@ -282,4 +306,5 @@ jobs:
             --title "skidcfg ${{ steps.v.outputs.ver }}" \
             --notes-file .github/RELEASE_NOTES.md \
             "${{ steps.v.outputs.doszip }}" \
+            "${{ steps.v.outputs.winzip }}" \
             SHA256SUMS

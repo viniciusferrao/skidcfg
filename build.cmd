@@ -3,17 +3,21 @@ rem Build skidcfg and run its self-check on Windows.
 rem
 rem     build            build into .\build and run the self-check
 rem
-rem What this produces is a Windows binary, and skidcfg's screen is BIOS calls,
-rem so the program it builds draws nothing and reads the keyboard a line at a
-rem time. That is on purpose and it is why there is no "install" here: a
-rem Windows executable in a Stunts directory would be a trap. Use DOSBUILD.BAT
-rem for a program you can run, which compiles these same sources with Microsoft
-rem C 5.10 into SKIDCFG.EXE.
+rem What this produces is a Windows console program. src\scrn.c draws the same
+rem screen through the console API, whose attribute word carries the same bits
+rem in the same places as the BIOS one, so this is the program and not a
+rem compile-only stub.
 rem
-rem What this build is for is the other half. src\setup.c has no console in it,
-rem so the self-check exercises the whole SETUP.DAT format, both menu orders and
-rem every help paragraph without needing DOS, and a second compiler reading the
-rem sources catches what a 1988 one does not.
+rem It still refuses /I. A Windows executable copied over SETUP.EXE leaves a
+rem game directory holding a file DOS cannot run under the name of the one it
+rem could, and that is true of a program that draws perfectly well. Build
+rem SKIDCFG.EXE with MSCBUILD.BAT, TCBUILD.BAT or WCLBUILD.BAT and install
+rem with that.
+rem
+rem The other half of what this build is for is the self-check. src\setup.c has
+rem no console in it, so the whole SETUP.DAT format, both menu orders and every
+rem help paragraph are exercised without needing DOS, and a second compiler
+rem reading the sources catches what a 1988 one does not.
 rem
 rem Point CC at a compiler; clang and gcc both work, and on Windows clang needs
 rem either the MSVC build tools or a mingw-w64 installation for its headers and
@@ -37,13 +41,13 @@ if not exist build mkdir build
 echo Building skidcfg...
 %CC% %CFLAGS% %EXTRA% -I src -o build\skidcfg.exe ^
     src\drivers.c src\drvblk.c src\drvscan.c src\setup.c src\scrn.c ^
-    src\install.c src\skidcfg.c
+    src\install.c src\util.c src\skidcfg.c
 if errorlevel 1 goto :failed
 
 echo Building the self-check...
 %CC% %CFLAGS% %EXTRA% -I src -o build\selfcheck.exe ^
     test\selfchk.c src\drivers.c src\drvblk.c src\drvscan.c src\setup.c ^
-    src\install.c
+    src\install.c src\util.c
 if errorlevel 1 goto :failed
 
 rem From inside build\, because the self-check writes its scratch SETUP.DAT
@@ -57,7 +61,7 @@ if not "%SELFCHECK_RC%"=="0" goto :failed
 
 echo.
 echo Built build\skidcfg.exe and build\selfcheck.exe.
-echo For a SKIDCFG.EXE that draws its screen, run DOSBUILD.BAT.
+echo For a SKIDCFG.EXE the game directory can use, run MSCBUILD.BAT.
 popd
 endlocal
 exit /b 0

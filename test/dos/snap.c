@@ -22,9 +22,9 @@
  *
  * ------------------------------------------------------------------ building
  *
- * Not built by DOSBUILD.BAT and not built by CI, because it is DOS only and it
+ * Not built by MSCBUILD.BAT and not built by CI, because it is DOS only and it
  * is an instrument rather than part of the program. Build it beside skidcfg
- * with the same explicit library list, which is not optional; see DOSBUILD.BAT
+ * with the same explicit library list, which is not optional; see MSCBUILD.BAT
  * for why:
  *
  *     cl /c /AL /W2 SNAP.C

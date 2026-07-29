@@ -31,6 +31,13 @@ goto end
 
 set PATH=%TCDIR%\BIN;%PATH%
 
+rem Any earlier build goes before this one starts. A batch file here cannot
+rem set an errorlevel, so what a caller has to go on is the message and the
+rem files; leaving a working binary from last time next to a failed rebuild
+rem makes the second of those lie.
+if exist SKIDCFG.EXE del SKIDCFG.EXE
+if exist SKIDCHK.EXE del SKIDCHK.EXE
+
 cd src
 
 rem -ml is the large model, matching the other two DOS builds.
@@ -49,7 +56,15 @@ rem empty, which links the startup object alone and leaves every symbol
 rem undefined. The four fields are objects, executable, map, libraries. nul
 rem discards the map, and /c makes the link case sensitive to match the
 rem compiler.
-echo /c %TCDIR%\LIB\C0L.OBJ drivers.obj drvblk.obj drvscan.obj setup.obj scrn.obj install.obj util.obj skidcfg.obj> tclink.rsp
+rem A trailing + continues the object field onto the next line, so no physical
+rem echo has to hold the whole list. That matters because the echo is itself a
+rem DOS command line: with the objects on one line and TCDIR expanded it came to
+rem 124 characters against the 127 the shell allows, so a Turbo C installed
+rem anywhere with a longer path pushed the command that builds the response file
+rem past the limit the response file exists to avoid.
+echo /c %TCDIR%\LIB\C0L.OBJ +> tclink.rsp
+echo drivers.obj drvblk.obj drvscan.obj setup.obj +>> tclink.rsp
+echo scrn.obj install.obj util.obj skidcfg.obj>> tclink.rsp
 echo ..\SKIDCFG.EXE>> tclink.rsp
 echo nul>> tclink.rsp
 echo %TCDIR%\LIB\CL.LIB %TCDIR%\LIB\MATHL.LIB>> tclink.rsp
@@ -64,7 +79,9 @@ tcc -c -ml -I%TCDIR%\INCLUDE -I. ..\test\selfchk.c
 if errorlevel 1 goto fail
 tcc -c -ml -I%TCDIR%\INCLUDE drivers.c drvblk.c drvscan.c setup.c install.c util.c
 if errorlevel 1 goto fail
-echo /c %TCDIR%\LIB\C0L.OBJ selfchk.obj drivers.obj drvblk.obj drvscan.obj setup.obj install.obj util.obj> tclink.rsp
+echo /c %TCDIR%\LIB\C0L.OBJ +> tclink.rsp
+echo selfchk.obj drivers.obj drvblk.obj +>> tclink.rsp
+echo drvscan.obj setup.obj install.obj util.obj>> tclink.rsp
 echo ..\SKIDCHK.EXE>> tclink.rsp
 echo nul>> tclink.rsp
 echo %TCDIR%\LIB\CL.LIB %TCDIR%\LIB\MATHL.LIB>> tclink.rsp

@@ -254,7 +254,11 @@ int setup_read(struct setup *s, const char *path)
          * name in the directory that will not open is a file whose contents
          * are unknown, which is the one state this must not let the caller
          * write over. */
-        return sk_file_present(path) ? SETUP_BAD_READ : SETUP_NO_FILE;
+        /* Only a directory that definitely said no is a machine with no
+         * settings on it. If it could not answer, the file may well be there
+         * and unreadable this minute, and writing defaults over it is the one
+         * outcome that cannot be undone. */
+        return sk_presence(path) == SK_ABSENT ? SETUP_NO_FILE : SETUP_BAD_READ;
     }
     while (n < NLINES) {
         int got = get_line(f, line[n], LINEMAX);
@@ -354,8 +358,14 @@ const char *setup_why(void)
 
 static int in_the_way(const char *name)
 {
-    if (!sk_file_present(name)) {
+    enum sk_presence p = sk_presence(name);
+
+    if (p == SK_ABSENT) {
         return 0;
+    }
+    if (p == SK_UNKNOWN) {
+        sprintf(why, "%s may be here and the directory would not say", name);
+        return 1;
     }
     /* Refused rather than written over, and this is the one place that rule
      * costs somebody something: a machine switched off mid-replacement leaves
@@ -441,8 +451,10 @@ int setup_write(const struct setup *s, const char *path)
         return 1;
     }
 
-    /* The first run, where there is nothing to keep. */
-    if (!sk_file_present(path)) {
+    /* The first run, where there is nothing to keep. Only a definite absence
+     * counts as one: anything else goes down the path that moves the old file
+     * aside first rather than the one that assumes there is none. */
+    if (sk_presence(path) == SK_ABSENT) {
         if (rename(new_file, path) != 0) {
             remove(new_file);
             sprintf(why, "%s could not be renamed to %s", new_file, path);

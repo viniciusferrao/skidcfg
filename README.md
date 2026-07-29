@@ -7,7 +7,9 @@ drop-in replacement for the `SETUP.EXE`.
 
 ## Use
 
-Copy `SKIDCFG.EXE` into the game directory and run it.
+Copy `SKIDCFG.EXE` into the game directory and run it. The Windows console
+build is `SKIDCFW.EXE` and reads the same directory, but it will not install
+itself over `SETUP.EXE`: what that would leave there is not a DOS program.
 
     SKIDCFG.EXE [option]
 
@@ -76,7 +78,10 @@ looks for the compiler in the default location.
 
     WCLBUILD WIN32    Open Watcom 1.9, Win32 console
 
-Runs on Windows 95 and later, from the command prompt.
+Produces `SKIDCFW.EXE`, run from the command prompt. It uses the console API
+Win32 has had since the beginning, so it ought to run on anything back to
+Windows 95, but the oldest Windows it has actually been run on is Windows 11.
+Take the older ones as untested rather than supported.
 
 Any modern toolchain should work with the Makefile. Example with MinGW-w64:
 

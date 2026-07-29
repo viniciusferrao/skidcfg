@@ -597,23 +597,40 @@ static int option(int argc, char **argv)
         fprintf(stderr, "%s: one option at a time.\n", prog);
         return 2;
     }
-    /* Taking SETUP.EXE's name is a DOS thing to do, and only a DOS build has
-     * any business doing it. A hosted build is a test artifact: it draws
-     * nothing, reads no keyboard, and copying one over SETUP.EXE would leave a
-     * game directory holding an executable the machine cannot run, under the
-     * name of the one it could. Refused before anything is renamed. */
-    if (opt_is(a, "INSTALL") || opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
+    /* The two halves of installation are not one question, so they are not
+     * behind one test.
+     *
+     * /I puts this executable where the game looks for SETUP.EXE, and only a
+     * DOS build has any business doing that. Anything else leaves a game
+     * directory holding an executable the machine cannot run, under the name
+     * of the one it could: a Windows PE is as useless to DOS there as a hosted
+     * ELF is. Not being able to draw a screen is beside the point, which is
+     * why the test is SK_DOS and not "has a screen".
+     *
+     * /U puts the original back and never puts this program anywhere, so the
+     * failure /I has does not exist for it. It stays available wherever the
+     * files can be reached, which makes a machine that can read the directory
+     * a machine that can undo an install. */
+    if (opt_is(a, "INSTALL")) {
+#ifdef SK_DOS
+        return inst_install(argv[0]);
+#else
+        fprintf(stderr,
+                "%s: this build cannot take SETUP.EXE's place, because what it\n"
+                "would leave there is not a DOS program. Build SKIDCFG.EXE\n"
+                "with MSCBUILD.BAT, TCBUILD.BAT or WCLBUILD.BAT and install\n"
+                "with that. Nothing has been renamed.\n",
+                prog);
+        return 2;
+#endif
+    }
+    if (opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
 #ifdef SK_SCREEN
-        if (opt_is(a, "INSTALL")) {
-            return inst_install(argv[0]);
-        }
         return inst_uninstall();
 #else
         fprintf(stderr,
-                "%s: this is a hosted build, for compiling and testing the\n"
-                "sources. It cannot take SETUP.EXE's place, because what it\n"
-                "would leave there is not a DOS program. Build with\n"
-                "DOSBUILD.BAT or WCLBUILD.BAT and use that.\n",
+                "%s: this is a hosted build and has no game directory to undo\n"
+                "an install in.\n",
                 prog);
         return 2;
 #endif
