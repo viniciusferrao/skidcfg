@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "drvblk.h"
-#include "skidcfg.h"
+#include "skidset.h"
 
 /* The joined paragraph before it is wrapped. A block is 2048 bytes and most
  * of a big one is help, so this cannot be reached without the block limit
@@ -186,7 +186,7 @@ int drv_blk_find(const char *buf, int len)
 }
 
 /* One row onto the end. The newline goes between rows and never after the
- * last, because src/skidcfg.c counts a paragraph's rows as one more than the
+ * last, because src/skidset.c counts a paragraph's rows as one more than the
  * newlines in it: a trailing one would grow every window by an empty line. */
 static int put_row(char *out, long *used, long outmax, int *used_rows,
                    const char *src, int len, int rows)
@@ -329,7 +329,7 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
         }
         span = (long)(p - text);
         if (span > DRV_BLK_MAX) {
-            return "no SKIDCFGEND in the first 2048 bytes";
+            return "no SKIDSETEND in the first 2048 bytes";
         }
         if (++lines > DRV_BLK_LINES_MAX) {
             return "more than 64 lines";
@@ -378,7 +378,7 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
                 return "brief is empty";
             }
             if (strchr(val, '(') != NULL || strchr(val, ')') != NULL) {
-                return "brief has brackets in it, which skidcfg adds itself";
+                return "brief has brackets in it, which skidset adds itself";
             }
             if (!copy_field(b->brief, DRV_BRIEF_MAX, val)) {
                 return "brief is longer than 21 characters";
@@ -434,14 +434,14 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
             join[joined] = '\0';
         } else {
             /* A key this build does not know is ignored rather than refused,
-             * and that is the format's way forward. A later skidcfg can add an
+             * and that is the format's way forward. A later skidset can add an
              * optional key and a driver can carry it while still working here,
              * which is what matters when drivers outlive the program that
              * reads them. Refusing instead would mean every driver had to pick
-             * one version of skidcfg to work with.
+             * one version of skidset to work with.
              *
              * The magic is still there for a change this cannot absorb: a new
-             * meaning for a key that already exists needs SKIDCFGDRV2, and an
+             * meaning for a key that already exists needs SKIDSETDRV2, and an
              * old build then skips the block whole rather than misreading it.
              *
              * A typo costs little. Misspell a required key and the block is
@@ -453,7 +453,7 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
     }
 
     if (!ended) {
-        return "no SKIDCFGEND";
+        return "no SKIDSETEND";
     }
     if (kind == 0) {
         return "neither sound nor video";

@@ -1,5 +1,5 @@
 @echo off
-rem Build skidcfg as a 16-bit DOS program with Turbo C 2.01.
+rem Build skidset as a 16-bit DOS program with Turbo C 2.01.
 rem
 rem The third opinion on these sources, and the one that reads them as a 1989
 rem compiler rather than a 1988 or a 2002 one. It ships nothing: Borland's
@@ -35,7 +35,7 @@ rem Any earlier build goes before this one starts. A batch file here cannot
 rem set an errorlevel, so what a caller has to go on is the message and the
 rem files; leaving a working binary from last time next to a failed rebuild
 rem makes the second of those lie.
-if exist SKIDCFG.EXE del SKIDCFG.EXE
+if exist SKIDSET.EXE del SKIDSET.EXE
 if exist SKIDCHK.EXE del SKIDCHK.EXE
 
 cd src
@@ -44,7 +44,7 @@ rem -ml is the large model, matching the other two DOS builds.
 rem
 rem -c matters. Without it TCC links as well, and the link line it builds for
 rem eight objects overruns what DOS will pass.
-tcc -c -ml -I%TCDIR%\INCLUDE drivers.c drvblk.c drvscan.c setup.c scrn.c install.c util.c skidcfg.c
+tcc -c -ml -I%TCDIR%\INCLUDE drivers.c drvblk.c drvscan.c setup.c scrn.c install.c util.c skidset.c
 if errorlevel 1 goto fail
 
 rem TLINK is driven from a response file because the object list and the two
@@ -64,8 +64,8 @@ rem anywhere with a longer path pushed the command that builds the response file
 rem past the limit the response file exists to avoid.
 echo /c %TCDIR%\LIB\C0L.OBJ +> tclink.rsp
 echo drivers.obj drvblk.obj drvscan.obj setup.obj +>> tclink.rsp
-echo scrn.obj install.obj util.obj skidcfg.obj>> tclink.rsp
-echo ..\SKIDCFG.EXE>> tclink.rsp
+echo scrn.obj install.obj util.obj skidset.obj>> tclink.rsp
+echo ..\SKIDSET.EXE>> tclink.rsp
 echo nul>> tclink.rsp
 echo %TCDIR%\LIB\CL.LIB %TCDIR%\LIB\MATHL.LIB>> tclink.rsp
 tlink @tclink.rsp
@@ -73,7 +73,7 @@ if errorlevel 1 goto fail
 del tclink.rsp
 del *.obj
 
-rem The self-check, from the same sources. skidcfg.c is left out because
+rem The self-check, from the same sources. skidset.c is left out because
 rem selfchk.c brings its own main().
 tcc -c -ml -I%TCDIR%\INCLUDE -I. ..\test\selfchk.c
 if errorlevel 1 goto fail
@@ -92,7 +92,7 @@ del *.obj
 cd ..
 
 echo.
-echo Built SKIDCFG.EXE and SKIDCHK.EXE. Check the build with:
+echo Built SKIDSET.EXE and SKIDCHK.EXE. Check the build with:
 echo     SKIDCHK
 goto end
 

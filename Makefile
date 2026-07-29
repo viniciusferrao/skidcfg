@@ -1,4 +1,4 @@
-# skidcfg - a setup program for Stunts 1.1
+# skidset - a setup program for Stunts 1.1
 #
 # Strict C89 with no dependencies, so it builds anywhere "make" runs. For a
 # 16-bit DOS build, which is the one that matters, run MSCBUILD.BAT under
@@ -8,9 +8,9 @@ CFLAGS  ?= -std=c89 -pedantic -Wall -Wextra -O2
 
 # The drivers this program offers are src/drvtab.h plus whatever the drivers in
 # the game directory say about themselves; see DRVBLOCK.md. Edit that
-# file to change them, or for the one driver that ships switched off:
+# file to change them, or for the example row that ships switched off:
 #
-#     make EXTRA=-DSKIDCFG_SC55        the Roland SC-55 entry as well
+#     make EXTRA=-DSKIDSET_EXTRA        an example added row as well
 #
 # test/drvmin.h is a cut down table with entries missing, and what CI builds
 # its third configuration from.
@@ -19,24 +19,24 @@ EXTRA   ?=
 # What the self-check links against: everything except the screen and the
 # main(). It needs neither the screen nor the keyboard, drvscan.c off DOS finds
 # no drivers and says so, and install.c decides what state a game directory is
-# in without drawing anything, which leaves only scrn.c and skidcfg.c out.
+# in without drawing anything, which leaves only scrn.c and skidset.c out.
 CHKSRC   = src/drivers.c src/drvblk.c src/drvscan.c src/setup.c \
            src/install.c src/util.c
 
-SRC      = $(CHKSRC) src/scrn.c src/skidcfg.c
+SRC      = $(CHKSRC) src/scrn.c src/skidset.c
 HDR      = src/drivers.h src/drvblk.h src/drvscan.h src/drvtab.h \
            src/mainhlp.h src/setup.h src/scrn.h src/install.h \
-           src/skidcfg.h src/version.h
+           src/skidset.h src/version.h
 
 # Where "make stage" drops the hosted binary. There is deliberately no default:
-# it used to be ".", which made the target "cp skidcfg ." and an error from cp
+# it used to be ".", which made the target "cp skidset ." and an error from cp
 # about a file and itself. Nothing is written into a game directory by any
 # target here; see the note on that target.
 STAGE_DIR ?=
 
-all: skidcfg
+all: skidset
 
-skidcfg: $(SRC) $(HDR)
+skidset: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) $(EXTRA) -I src -o $@ $(SRC)
 
 # Deliberately not called "install". The binary this builds is hosted: it draws
@@ -44,16 +44,16 @@ skidcfg: $(SRC) $(HDR)
 # executable the machine cannot run where the one it can used to be. What
 # belongs there comes out of MSCBUILD.BAT or WCLBUILD.BAT. This target is for
 # looking at the hosted build somewhere harmless.
-stage: skidcfg
+stage: skidset
 	@test -n "$(STAGE_DIR)" || { \
 	  echo "make stage STAGE_DIR=<directory>" >&2; \
 	  echo "  There is no default, on purpose: the binary this copies is a" >&2; \
 	  echo "  hosted one and there is nowhere it obviously belongs." >&2; \
 	  exit 1; }
 	@echo "This is a hosted build and is not a DOS program."
-	@echo "For a game directory, build SKIDCFG.EXE with MSCBUILD.BAT"
+	@echo "For a game directory, build SKIDSET.EXE with MSCBUILD.BAT"
 	@echo "or WCLBUILD.BAT and copy that."
-	cp skidcfg "$(STAGE_DIR)"
+	cp skidset "$(STAGE_DIR)"
 
 # The self-check needs neither the screen nor the game: src/setup.c has no
 # console in it, so the whole file format can be exercised on any host.
@@ -62,12 +62,13 @@ selfcheck: test/selfchk.c $(CHKSRC) $(HDR)
 	      $(CHKSRC)
 	./selfcheck
 
-# The same check with the SC-55 entry switched on, which is the build a project
-# shipping that driver makes.
-selfcheck-sc55: test/selfchk.c $(CHKSRC) $(HDR)
-	$(CC) $(CFLAGS) -DSKIDCFG_SC55 -I src -o selfcheck-sc55 test/selfchk.c \
+# The same check with the example row switched on, which is what says a table
+# with a row added still holds together. The row is fictitious on purpose; a
+# real driver describes itself instead, and DRVBLOCK.md is that format.
+selfcheck-extra: test/selfchk.c $(CHKSRC) $(HDR)
+	$(CC) $(CFLAGS) -DSKIDSET_EXTRA -I src -o selfcheck-extra test/selfchk.c \
 	      $(CHKSRC)
-	./selfcheck-sc55
+	./selfcheck-extra
 
 # And against a table with entries taken out, which is the check that removing
 # one is safe. Nothing in the sources is special cased for it, so this is what
@@ -155,7 +156,7 @@ LICENSE.TXT: LICENSE tools/asciify.sed
 	tr -d '\r' < LICENSE | sed -f tools/asciify.sed | sed 's/$$/\r/' > $@
 	$(dostext_verify)
 
-# DOS/32A's own licence, which travels with any archive holding SKIDCF32.EXE:
+# DOS/32A's own licence, which travels with any archive holding SKIDST32.EXE:
 # the extender is linked into that binary, and clause 2 asks for the notice in
 # the materials provided with the distribution. Clause 3 asks for one sentence
 # of acknowledgment in the end-user documentation, which is in README.md and so
@@ -169,10 +170,10 @@ DOS32A.TXT: tools/dos32a-license.txt
 	$(dostext_verify)
 
 clean:
-	rm -f skidcfg skidcfg.exe SKIDCFG.EXE SKIDCHK.EXE selfcheck \
-	      selfcheck.exe selfcheck-sc55 selfcheck-min drvtab.bak \
-	      README.TXT LICENSE.TXT DOS32A.TXT SKIDCF32.EXE SKIDCK32.EXE \
+	rm -f skidset skidset.exe SKIDSET.EXE SKIDCHK.EXE selfcheck \
+	      selfcheck.exe selfcheck-extra selfcheck-min drvtab.bak \
+	      README.TXT LICENSE.TXT DOS32A.TXT SKIDST32.EXE SKIDCK32.EXE \
 	      src/*.o src/*.obj
 
-.PHONY: all stage selfcheck selfcheck-sc55 selfcheck-min format \
+.PHONY: all stage selfcheck selfcheck-extra selfcheck-min format \
         format-check lint clean

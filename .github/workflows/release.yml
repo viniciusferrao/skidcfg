@@ -38,7 +38,7 @@ jobs:
         run: |
           call WCLBUILD.BAT
           if errorlevel 1 exit /b 1
-          if not exist SKIDCFG.EXE exit /b 1
+          if not exist SKIDSET.EXE exit /b 1
           if not exist SKIDCHK.EXE exit /b 1
 
       # The 32-bit binary, with DOS/32A bound in. It wants a 386 and MS-DOS
@@ -49,7 +49,7 @@ jobs:
         run: |
           call WCLBUILD.BAT 386
           if errorlevel 1 exit /b 1
-          if not exist SKIDCF32.EXE exit /b 1
+          if not exist SKIDST32.EXE exit /b 1
           if not exist SKIDCK32.EXE exit /b 1
 
       # The Windows console build. Same screen, same keys, different API; it is
@@ -59,7 +59,7 @@ jobs:
         run: |
           call WCLBUILD.BAT WIN32
           if errorlevel 1 exit /b 1
-          if not exist SKIDCFW.EXE exit /b 1
+          if not exist SKIDSTW.EXE exit /b 1
           if not exist SKIDCKW.EXE exit /b 1
 
       # It runs on the runner, which is the only one of the five that can be
@@ -73,23 +73,23 @@ jobs:
       - name: Report
         shell: bash
         run: |
-          ls -l SKIDCFG.EXE SKIDCHK.EXE SKIDCF32.EXE SKIDCK32.EXE SKIDCFW.EXE
-          sha256sum SKIDCFG.EXE SKIDCHK.EXE SKIDCF32.EXE SKIDCK32.EXE SKIDCFW.EXE
+          ls -l SKIDSET.EXE SKIDCHK.EXE SKIDST32.EXE SKIDCK32.EXE SKIDSTW.EXE
+          sha256sum SKIDSET.EXE SKIDCHK.EXE SKIDST32.EXE SKIDCK32.EXE SKIDSTW.EXE
 
       - uses: actions/upload-artifact@v4
         with:
           name: dos
           path: |
-            SKIDCFG.EXE
+            SKIDSET.EXE
             SKIDCHK.EXE
-            SKIDCF32.EXE
+            SKIDST32.EXE
             SKIDCK32.EXE
-            SKIDCFW.EXE
+            SKIDSTW.EXE
           if-no-files-found: error
 
   # The shipped binary's own self-check, run against the shipped binary.
   #
-  # skidpack cannot do this for its DOS target and says so; skidcfg can, because
+  # skidpack cannot do this for its DOS target and says so; skidset can, because
   # the self-check needs no game data, no screen and no keyboard, and DOSBox
   # runs on a Linux runner. So the thing that gets published is the thing that
   # was tested, rather than a hosted build of the same sources.
@@ -158,7 +158,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: dos, path: bin }
 
-      # SKIDCFG_VERSION is the only place a version is written, so a tag that
+      # SKIDSET_VERSION is the only place a version is written, so a tag that
       # disagrees with it would ship a binary printing the other number. Catch
       # that here rather than in a bug report.
       - name: Version
@@ -171,25 +171,25 @@ jobs:
           # unequal to its own tag and every name built from it carries a
           # carriage return.
           VER=$(tr -d '\r' < src/version.h \
-                | sed -n 's/^#define SKIDCFG_VERSION "\(.*\)"/\1/p')
-          [ -n "$VER" ] || { echo "no SKIDCFG_VERSION in src/version.h"; exit 1; }
+                | sed -n 's/^#define SKIDSET_VERSION "\(.*\)"/\1/p')
+          [ -n "$VER" ] || { echo "no SKIDSET_VERSION in src/version.h"; exit 1; }
           case $VER in
-            *[!0-9.]*) echo "SKIDCFG_VERSION '$VER' is not digits and dots"
+            *[!0-9.]*) echo "SKIDSET_VERSION '$VER' is not digits and dots"
                        exit 1;;
           esac
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG=${GITHUB_REF_NAME#v}
             [ "$TAG" = "$VER" ] || {
-              echo "tag v$TAG disagrees with SKIDCFG_VERSION $VER in src/version.h"
+              echo "tag v$TAG disagrees with SKIDSET_VERSION $VER in src/version.h"
               exit 1; }
           fi
-          # SKIDCF10.ZIP, from 1.0. DOS wants 8.3, and a version long enough to
+          # SKIDST10.ZIP, from 1.0. DOS wants 8.3, and a version long enough to
           # break it should say so here rather than ship an unopenable name.
-          DOSZIP="SKIDCF$(echo "$VER" | tr -d .)"
+          DOSZIP="SKIDST$(echo "$VER" | tr -d .)"
           [ ${#DOSZIP} -le 8 ] || { echo "$DOSZIP exceeds 8.3"; exit 1; }
           echo "ver=$VER"           >> "$GITHUB_OUTPUT"
           echo "doszip=$DOSZIP.ZIP" >> "$GITHUB_OUTPUT"
-          echo "winzip=skidcfg-$VER-win32.zip" >> "$GITHUB_OUTPUT"
+          echo "winzip=skidset-$VER-win32.zip" >> "$GITHUB_OUTPUT"
 
       # Generated from README.md at the tagged commit, so the text a release
       # ships cannot lag the text it documents.
@@ -235,8 +235,8 @@ jobs:
           make LICENSE.TXT DOS32A.TXT
           mkdir -p stage
           cp LICENSE.TXT README.TXT DOS32A.TXT stage/
-          cp bin/SKIDCFG.EXE bin/SKIDCF32.EXE stage/
-          chmod +x stage/SKIDCFG.EXE stage/SKIDCF32.EXE
+          cp bin/SKIDSET.EXE bin/SKIDST32.EXE stage/
+          chmod +x stage/SKIDSET.EXE stage/SKIDST32.EXE
           # -0 stores rather than deflates, and that is deliberate. Deflate
           # arrived with PKZIP 2.04g in 1993; PKUNZIP 1.1, which is what a
           # machine of the game's own vintage has, cannot read a deflated
@@ -245,15 +245,23 @@ jobs:
           # may not have. -X keeps the extra fields out.
           (cd stage && zip -X -0 "../${{ steps.v.outputs.doszip }}" \
                            LICENSE.TXT README.TXT DOS32A.TXT \
-                           SKIDCFG.EXE SKIDCF32.EXE)
+                           SKIDSET.EXE SKIDST32.EXE)
 
           # The Windows archive. No 8.3 name and no stored-only rule: the
           # reader has a modern extractor, and the DOS/32A notice does not
           # travel because nothing in here links the extender.
+          #
+          # The member is skidset.exe and not the SKIDSTW.EXE the build emits.
+          # SKIDSTW exists so that three targets built in one directory do not
+          # overwrite each other; nothing about it belongs in an archive of its
+          # own, where the cramped name buys nothing and the natural one reads
+          # better. This is what skidpack ships as skidpack.exe for the same
+          # reason.
           mkdir -p win32
-          cp LICENSE.TXT README.TXT bin/SKIDCFW.EXE win32/
+          cp LICENSE.TXT README.TXT win32/
+          cp bin/SKIDSTW.EXE win32/skidset.exe
           (cd win32 && zip -X -9 "../${{ steps.v.outputs.winzip }}" \
-                           LICENSE.TXT README.TXT SKIDCFW.EXE)
+                           LICENSE.TXT README.TXT skidset.exe)
 
           sha256sum "${{ steps.v.outputs.doszip }}" \
                     "${{ steps.v.outputs.winzip }}" > SHA256SUMS
@@ -303,7 +311,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "skidcfg ${{ steps.v.outputs.ver }}" \
+            --title "skidset ${{ steps.v.outputs.ver }}" \
             --notes-file .github/RELEASE_NOTES.md \
             "${{ steps.v.outputs.doszip }}" \
             "${{ steps.v.outputs.winzip }}" \

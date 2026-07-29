@@ -4,17 +4,17 @@
  * is neither. The version governs the whole program rather than any part of
  * it, and a release is the one line below and nothing else.
  */
-#ifndef SKIDCFG_VERSION_H
-#define SKIDCFG_VERSION_H
+#ifndef SKIDSET_VERSION_H
+#define SKIDSET_VERSION_H
 
-#define SKIDCFG_VERSION "1.0"
+#define SKIDSET_VERSION "1.0"
 
-#define SKIDCFG_NAME "SKIDCFG"
-#define SKIDCFG_DESCRIPTION \
+#define SKIDSET_NAME "SKIDSET"
+#define SKIDSET_DESCRIPTION \
     "SETUP.EXE replacement with an extensible driver list"
-#define SKIDCFG_YEAR "2026"
-#define SKIDCFG_DEV "Vinicius Ferrao"
-#define SKIDCFG_MAIL "<vinicius@ferrao.net.br>"
+#define SKIDSET_YEAR "2026"
+#define SKIDSET_DEV "Vinicius Ferrao"
+#define SKIDSET_MAIL "<vinicius@ferrao.net.br>"
 
 /* The banner, printed above the usage the way a DOS tool of the period
  * announced itself before saying anything else. It carries the address and the
@@ -22,17 +22,17 @@
  * is a reproduction of a line that read "Copyright (c) 1990 DSI" and an e-mail
  * address in it would be the loudest thing on a screen built to look like
  * 1991. A banner at a DOS prompt has no such job. */
-#define SKIDCFG_TAGLINE \
-    SKIDCFG_NAME " " SKIDCFG_VERSION ": " SKIDCFG_DESCRIPTION "\n"
-#define SKIDCFG_COPYRIGHT \
-    "Copyright (c) " SKIDCFG_YEAR " " SKIDCFG_DEV " " SKIDCFG_MAIL "\n"
+#define SKIDSET_TAGLINE \
+    SKIDSET_NAME " " SKIDSET_VERSION ": " SKIDSET_DESCRIPTION "\n"
+#define SKIDSET_COPYRIGHT \
+    "Copyright (c) " SKIDSET_YEAR " " SKIDSET_DEV " " SKIDSET_MAIL "\n"
 
-#define SKIDCFG_BANNER SKIDCFG_TAGLINE SKIDCFG_COPYRIGHT
+#define SKIDSET_BANNER SKIDSET_TAGLINE SKIDSET_COPYRIGHT
 
 /* The second and third centred lines of the title box, where SETUP.EXE puts
  * "Version 1.0" and "Copyright (c) 1990 DSI". Those two are the only words on
  * the screen that assert an authorship, so they are the only two a replacement
- * must not keep; the first line stays the original's and lives in skidcfg.c
+ * must not keep; the first line stays the original's and lives in skidset.c
  * with the rest of the reproduction.
  *
  * The author's name is spelt in ASCII on purpose. Code page 437 has both of
@@ -44,16 +44,16 @@
  * page that matters. A name that renders everywhere beats one that is
  * typographically right in one country. LICENSE carries the accented spelling,
  * being read where UTF-8 works. */
-#define SKIDCFG_TITLE_VERSION SKIDCFG_NAME ": Version " SKIDCFG_VERSION
-#define SKIDCFG_TITLE_AUTHOR "Copyright (c) " SKIDCFG_YEAR " " SKIDCFG_DEV
+#define SKIDSET_TITLE_VERSION SKIDSET_NAME ": Version " SKIDSET_VERSION
+#define SKIDSET_TITLE_AUTHOR "Copyright (c) " SKIDSET_YEAR " " SKIDSET_DEV
 
 /* The blue line across row 0 of the exit screen, where SETUP.EXE puts
  * "Game Setup Program (c) 1990 DSI" and then returns to DOS without another
  * word. The sentence is the original's and says what the program is; the
  * copyright after it is the part a replacement has to make its own. */
-#define SKIDCFG_EXIT_BANNER                                                   \
-    SKIDCFG_NAME " " SKIDCFG_VERSION ": Game Setup Program (c) " SKIDCFG_YEAR \
-                 " " SKIDCFG_DEV
+#define SKIDSET_EXIT_BANNER                                                   \
+    SKIDSET_NAME " " SKIDSET_VERSION ": Game Setup Program (c) " SKIDSET_YEAR \
+                 " " SKIDSET_DEV
 
 /* What install.c searches a file for to decide whether it is this program.
  *
@@ -63,6 +63,6 @@
  * bump leaves every installed SETUP.ORG unrecoverable except by hand. It is
  * still a substring of something on the screen, so it cannot drift out of the
  * binary while the program still draws its own title. */
-#define SKIDCFG_MARK SKIDCFG_NAME ": Version "
+#define SKIDSET_MARK SKIDSET_NAME ": Version "
 
-#endif /* SKIDCFG_VERSION_H */
+#endif /* SKIDSET_VERSION_H */

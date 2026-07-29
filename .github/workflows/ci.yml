@@ -1,6 +1,6 @@
 name: build
 
-# skidcfg is a DOS program and the build that matters is Microsoft C 5.10 under
+# skidset is a DOS program and the build that matters is Microsoft C 5.10 under
 # DOSBox, which no runner has. What a runner can do is everything else, and it
 # is worth doing: the same sources have to satisfy a 1988 compiler and a current
 # one, and each catches things the other does not.
@@ -12,7 +12,7 @@ name: build
 # what keeps the merging and the index allocation under a hosted compiler.
 #
 # Everything is run three times: against the shipped table, against it with the
-# SC-55 entry switched on, and against a cut down table with entries removed. A
+# example row switched on, and against a cut down table with entries removed. A
 # derived count and a derived menu order are only interesting when the table is
 # not the shape they were written against, and removing an entry is the case
 # the whole design rests on being safe.
@@ -86,17 +86,17 @@ jobs:
       # is built anyway, because that is what keeps four compilers reading the
       # part of the tree the self-check does not link.
       - name: Build (strict C90)
-        run: make skidcfg CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
+        run: make skidset CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
       - name: Self-check
         run: make selfcheck CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
-      # With the SC-55 entry switched on, which is the build a project shipping
-      # that driver makes. Seven sound drivers rather than six, so the derived
-      # count and the derived menu order are exercised against a table that is
-      # not the shape they were written against.
-      - name: Self-check with the SC-55 entry
-        run: make selfcheck-sc55 CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
+      # With the example row switched on, which is what says a table with a row
+      # added still holds together. Seven sound drivers rather than six, so the
+      # derived count and the derived menu order are exercised against a table
+      # that is not the shape they were written against.
+      - name: Self-check with the example row
+        run: make selfcheck-extra CC=${{ matrix.cc }} CFLAGS="$WARN -O2"
 
       # And against a table with entries taken out, which is the check that
       # removing one is safe: the indices that remain must not have moved.
@@ -132,7 +132,7 @@ jobs:
           export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:exitcode=87
           export ASAN_OPTIONS=halt_on_error=1:exitcode=86
           make selfcheck CC=clang CFLAGS="$SAN"
-          make selfcheck-sc55 CC=clang CFLAGS="$SAN"
+          make selfcheck-extra CC=clang CFLAGS="$SAN"
           make selfcheck-min CC=clang CFLAGS="$SAN"
 
   # Everything above is a hosted compiler, and a hosted compiler cannot see the
@@ -160,7 +160,7 @@ jobs:
         run: |
           call WCLBUILD.BAT
           if errorlevel 1 exit /b 1
-          if not exist SKIDCFG.EXE exit /b 1
+          if not exist SKIDSET.EXE exit /b 1
           if not exist SKIDCHK.EXE exit /b 1
 
       # The same sources with a 32-bit int, which is the half of this the
@@ -173,7 +173,7 @@ jobs:
         run: |
           call WCLBUILD.BAT 386
           if errorlevel 1 exit /b 1
-          if not exist SKIDCF32.EXE exit /b 1
+          if not exist SKIDST32.EXE exit /b 1
           if not exist SKIDCK32.EXE exit /b 1
 
       # And the Windows console build, which is the one of the five that can

@@ -1,6 +1,6 @@
-/* SKIDCFG.EXE - choose the video mode and the sound driver for Stunts 1.1.
+/* SKIDSET.EXE - choose the video mode and the sound driver for Stunts 1.1.
  *
- *     SKIDCFG
+ *     SKIDSET
  *
  * The job SETUP.EXE does, written from scratch, on the screen SETUP.EXE draws.
  * It reads the SETUP.DAT you already have, offers the same two menus, and
@@ -32,7 +32,7 @@
 #include "mainhlp.h"
 #include "scrn.h"
 #include "setup.h"
-#include "skidcfg.h"
+#include "skidset.h"
 #include "version.h"
 
 #ifdef SK_SCREEN
@@ -108,7 +108,7 @@ static const char FOOTER[] =
 static const char HELP_FOOTER[] = "Type any key to return to the menu";
 static const char NO_HELP[] = "No Help Available";
 
-static const char BANNER[] = SKIDCFG_EXIT_BANNER;
+static const char BANNER[] = SKIDSET_EXIT_BANNER;
 
 /* The three centred lines of the title box.
  *
@@ -125,8 +125,8 @@ static const char BANNER[] = SKIDCFG_EXIT_BANNER;
  * place a version appears and which explains why the name is spelt without
  * its accents. */
 static const char TITLE_1[] = "\"Stunts\" Setup Program";
-static const char TITLE_2[] = SKIDCFG_TITLE_VERSION;
-static const char TITLE_3[] = SKIDCFG_TITLE_AUTHOR;
+static const char TITLE_2[] = SKIDSET_TITLE_VERSION;
+static const char TITLE_3[] = SKIDSET_TITLE_AUTHOR;
 
 /* ------------------------------------------------------------- keyboard -- */
 
@@ -422,11 +422,11 @@ static void report(const struct setup *s, int written)
 /* The banner and nothing else, which is what /VERSION is for. */
 static int version(void)
 {
-    fputs(SKIDCFG_BANNER, stdout);
+    fputs(SKIDSET_BANNER, stdout);
     return 0;
 }
 
-/* The name to put in the usage, which is not always SKIDCFG: /I leaves a
+/* The name to put in the usage, which is not always SKIDSET: /I leaves a
  * copy of this running as SETUP.EXE, and a help screen naming the other
  * program would be a small thing to get wrong and a confusing one. DOS 3.0 and
  * later give argv[0] as a full path, so take what follows the last separator;
@@ -437,14 +437,14 @@ static const char *prog_name(const char *path)
     const char *s;
 
     if (path == NULL) {
-        return SKIDCFG_NAME;
+        return SKIDSET_NAME;
     }
     for (s = path; *s != '\0'; s++) {
         if (*s == '\\' || *s == '/' || *s == ':') {
             name = s + 1;
         }
     }
-    return *name == '\0' ? SKIDCFG_NAME : name;
+    return *name == '\0' ? SKIDSET_NAME : name;
 }
 
 /* Two calls rather than one because C89 only guarantees 509 characters in a
@@ -458,8 +458,8 @@ static int usage(const char *prog)
            prog);
     fputs("options:\n"
           "  /D   list the drivers found, and any block that was not used\n"
-          "  /I   install SKIDCFG in place of SETUP.EXE\n"
-          "  /U   uninstall SKIDCFG and put the original SETUP.EXE back\n"
+          "  /I   install SKIDSET in place of SETUP.EXE\n"
+          "  /U   uninstall SKIDSET and put the original SETUP.EXE back\n"
           "  /V   show the version\n"
           "  /?   show this help\n",
           stdout);
@@ -600,27 +600,51 @@ static int option(int argc, char **argv)
     /* The two halves of installation are not one question, so they are not
      * behind one test.
      *
-     * /I puts this executable where the game looks for SETUP.EXE, and only a
-     * DOS build has any business doing that. Anything else leaves a game
-     * directory holding an executable the machine cannot run, under the name
-     * of the one it could: a Windows PE is as useless to DOS there as a hosted
-     * ELF is. Not being able to draw a screen is beside the point, which is
-     * why the test is SK_DOS and not "has a screen".
+     * /I puts this executable where the game looks for SETUP.EXE, so the only
+     * build that may do it is the one that runs everywhere the game does. That
+     * is the 16-bit real mode one and nothing else.
+     *
+     * A Windows PE there is obviously wrong: DOS cannot load it at all. The
+     * 32-bit DOS build is the one worth being careful about, because it looks
+     * right. It runs, it draws the same screen, and it would take the name
+     * without complaint, and what it leaves behind is a SETUP.EXE needing a
+     * 386 and MS-DOS 4.0 in a directory that a moment ago needed an 8086. The
+     * game still runs on the 8086; its setup program no longer does. None of
+     * that is visible until the directory reaches an older machine, and a game
+     * directory is exactly the kind of thing that gets copied onto one.
+     *
+     * Nothing is lost by refusing. The 32-bit build is an optional artifact and
+     * a second compiler's reading of the sources; anyone on a 386 can simply
+     * run it. /I exists so that instructions already saying "run SETUP.EXE"
+     * keep being right, and on the machines where that matters most the 16-bit
+     * build is the only answer that is.
      *
      * /U puts the original back and never puts this program anywhere, so the
      * failure /I has does not exist for it. It stays available wherever the
-     * files can be reached, which makes a machine that can read the directory
-     * a machine that can undo an install. */
+     * files can be reached, which is what lets a 16-bit build undo an install
+     * a 32-bit one managed to make before this refusal existed. */
     if (opt_is(a, "INSTALL")) {
-#ifdef SK_DOS
+#if defined(SK_DOS) && defined(SK_16BIT)
         return inst_install(argv[0]);
-#else
+#elif defined(SK_DOS)
         fprintf(stderr,
-                "%s: this build cannot take SETUP.EXE's place, because what it\n"
-                "would leave there is not a DOS program. Build SKIDCFG.EXE\n"
-                "with MSCBUILD.BAT, TCBUILD.BAT or WCLBUILD.BAT and install\n"
-                "with that. Nothing has been renamed.\n",
+                "%s: this is the 32-bit build, and it will not take\n"
+                "SETUP.EXE's name. That would leave this directory needing a\n"
+                "386 and MS-DOS 4.0 to configure a game that runs on an 8086,\n"
+                "and nothing would say so until you moved it to an older\n"
+                "machine. Install with SKIDSET.EXE, the 16-bit build, which\n"
+                "runs anywhere the game does. Run this one directly whenever\n"
+                "you like. Nothing has been renamed.\n",
                 prog);
+        return 2;
+#else
+        fprintf(
+            stderr,
+            "%s: this build cannot take SETUP.EXE's place, because what it\n"
+            "would leave there is not a DOS program. Build SKIDSET.EXE\n"
+            "with MSCBUILD.BAT, TCBUILD.BAT or WCLBUILD.BAT and install\n"
+            "with that. Nothing has been renamed.\n",
+            prog);
         return 2;
 #endif
     }
@@ -721,14 +745,14 @@ int main(int argc, char **argv)
     if (written && readfail) {
         scrn_close();
         fprintf(stderr,
-                SKIDCFG_NAME ": %s is here but could not be read, so it has\n"
+                SKIDSET_NAME ": %s is here but could not be read, so it has\n"
                              "not been written back. Nothing has changed.\n",
                 SETUP_PATH);
         return 1;
     }
     if (written && setup_write(&s, SETUP_PATH) != 0) {
         scrn_close();
-        fprintf(stderr, SKIDCFG_NAME ": cannot write %s: %s.\n", SETUP_PATH,
+        fprintf(stderr, SKIDSET_NAME ": cannot write %s: %s.\n", SETUP_PATH,
                 setup_why());
         return 1;
     }
@@ -737,7 +761,7 @@ int main(int argc, char **argv)
      * succeeded and left something behind has a line to say, and it belongs on
      * the DOS prompt rather than over the setup screen. */
     if (written && setup_why()[0] != '\0') {
-        fprintf(stderr, SKIDCFG_NAME ": %s.\n", setup_why());
+        fprintf(stderr, SKIDSET_NAME ": %s.\n", setup_why());
     }
     return 0;
 }

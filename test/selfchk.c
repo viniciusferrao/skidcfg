@@ -1,4 +1,4 @@
-/* skidcfg's self-check.
+/* skidset's self-check.
  *
  *     selfcheck
  *
@@ -35,7 +35,7 @@
 #include "drvblk.h"
 #include "drvscan.h"
 #include "install.h"
-#include "skidcfg.h"
+#include "skidset.h"
 #include "setup.h"
 
 /* For DRV_TABLE_STOCK and nothing else. With neither row macro defined this
@@ -219,7 +219,7 @@ static int file_has(const char *want)
 /* ----------------------------------------------------------- the version -- */
 
 /* src/install.c decides whether a file is this program by searching it for
- * SKIDCFG_MARK. Two things have to hold for that to work, and neither is
+ * SKIDSET_MARK. Two things have to hold for that to work, and neither is
  * visible from install.c on its own.
  *
  * The marker has to be in the binary, which it is only because the title box
@@ -230,14 +230,14 @@ static int file_has(const char *want)
  * it is checked rather than commented. */
 static void check_version(void)
 {
-    printf("--    %s\n", SKIDCFG_TAGLINE);
+    printf("--    %s\n", SKIDSET_TAGLINE);
     expect("the install marker is part of the title line",
-           strstr(SKIDCFG_TITLE_VERSION, SKIDCFG_MARK) != NULL, 1);
+           strstr(SKIDSET_TITLE_VERSION, SKIDSET_MARK) != NULL, 1);
     expect("and carries no version, so it survives a release",
-           strstr(SKIDCFG_MARK, SKIDCFG_VERSION) == NULL, 1);
+           strstr(SKIDSET_MARK, SKIDSET_VERSION) == NULL, 1);
     expect("the title lines fit the box they are centred in",
-           (int)strlen(SKIDCFG_TITLE_VERSION) <= 74 &&
-               (int)strlen(SKIDCFG_TITLE_AUTHOR) <= 74,
+           (int)strlen(SKIDSET_TITLE_VERSION) <= 74 &&
+               (int)strlen(SKIDSET_TITLE_AUTHOR) <= 74,
            1);
 }
 
@@ -364,8 +364,8 @@ static void check_help(void)
     check_help_of(&drv_sound, &fits);
 
     /* The rows that are not drivers have paragraphs too, and they are in a
-     * header of their own rather than in skidcfg.c so that this can reach
-     * them: skidcfg.c has the main() and cannot be linked here. The same
+     * header of their own rather than in skidset.c so that this can reach
+     * them: skidset.c has the main() and cannot be linked here. The same
      * limit applies to every word the help window ever shows. */
     for (i = 0; i < MAIN_HELP_N; i++) {
         if (!help_fits(main_help[i])) {
@@ -495,12 +495,14 @@ static void check_file(void)
     setup_default(&s);
     expect("a file can be written where there was none", setup_write(&s, DAT),
            0);
-    expect("and no scratch file is left beside it", sk_presence(TMP_NEW) == SK_PRESENT,
-           0);
+    expect("and no scratch file is left beside it",
+           sk_presence(TMP_NEW) == SK_PRESENT, 0);
     expect("nor the other one", sk_presence(TMP_OLD) == SK_PRESENT, 0);
     expect("writing over one already there works too", setup_write(&s, DAT), 0);
     expect("and still leaves neither",
-           sk_presence(TMP_NEW) == SK_PRESENT || sk_presence(TMP_OLD) == SK_PRESENT, 0);
+           sk_presence(TMP_NEW) == SK_PRESENT ||
+               sk_presence(TMP_OLD) == SK_PRESENT,
+           0);
     expect("while the file itself is there", sk_presence(DAT) == SK_PRESENT, 1);
 
     /* Neither scratch name is written over, whatever is under it. A machine
@@ -589,7 +591,7 @@ static int help_bottom(const char *s)
             n++;
         }
     }
-    return 6 + 1 + n; /* HELP.top + 1 + lines, as skidcfg.c derives it */
+    return 6 + 1 + n; /* HELP.top + 1 + lines, as skidset.c derives it */
 }
 
 static void check_stock_windows(void)
@@ -786,7 +788,7 @@ static void expect_refused(const char *what, const char *block)
     }
 }
 
-/* What src/skidcfg.c will make of a paragraph, so that a wrapped block and a
+/* What src/skidset.c will make of a paragraph, so that a wrapped block and a
  * transcribed one are counted the same way. */
 static int rows_in(const char *s)
 {
@@ -800,13 +802,13 @@ static int rows_in(const char *s)
     return n;
 }
 
-static const char BLOCK_OK[] = "SKIDCFGDRV01\n"
+static const char BLOCK_OK[] = "SKIDSETDRV01\n"
                                "sound\n"
                                "label Roland SC-55\n"
                                "brief SC-55\n"
                                "help Select if you have a Roland Sound\n"
                                "help Canvas on the MPU-401 port.\n"
-                               "SKIDCFGEND\n";
+                               "SKIDSETEND\n";
 
 static void check_block(void)
 {
@@ -821,7 +823,7 @@ static void check_block(void)
     why = drv_blk_parse(&a, BLOCK_OK);
     expect("a block with every required key is accepted", why == NULL, 1);
     expect_str("its label", a.label, "Roland SC-55");
-    expect_str("its brief, without the brackets skidcfg adds", a.brief,
+    expect_str("its brief, without the brackets skidset adds", a.brief,
                "SC-55");
     expect("it is a sound block", a.video, 0);
     expect("its help fits the window", rows_in(a.help) <= DRV_HELP_ROWS, 1);
@@ -831,41 +833,41 @@ static void check_block(void)
 
     /* The invisible space rule, which is the whole reason this format has no
      * quoting: a trailing space nobody can see must not change any byte. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
                             "sound   \n"
                             "label Roland SC-55  \n"
                             "brief   SC-55\n"
                             "help Select if you have a Roland Sound \n"
                             "help Canvas on the MPU-401 port.\n"
-                            "SKIDCFGEND\n");
+                            "SKIDSETEND\n");
     expect("spaces nobody can see are accepted", why == NULL, 1);
     expect("and change nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
     /* One long help line has to mean what several short ones mean, or where
      * somebody breaks their source would change the screen. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
                             "sound\n"
                             "label Roland SC-55\n"
                             "brief SC-55\n"
                             "help Select if you have a Roland Sound Canvas on "
                             "the MPU-401 port.\n"
-                            "SKIDCFGEND\n");
+                            "SKIDSETEND\n");
     expect("one long help line is accepted", why == NULL, 1);
     expect("and wraps to the same paragraph as two short ones",
            strcmp(a.help, b.help) == 0, 1);
 
     /* A block assembled by hand in a DOS editor arrives with CRLF. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\r\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\r\n"
                             "sound\r\n"
                             "label Roland SC-55\r\n"
                             "brief SC-55\r\n"
                             "help Select if you have a Roland Sound\r\n"
                             "help Canvas on the MPU-401 port.\r\n"
-                            "SKIDCFGEND\r\n");
+                            "SKIDSETEND\r\n");
     expect("CRLF is accepted", why == NULL, 1);
     expect("and changes nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
                             "; who made this, and under what licence\n"
                             "\n"
                             "sound\n"
@@ -873,18 +875,18 @@ static void check_block(void)
                             "brief SC-55\n"
                             "help Select if you have a Roland Sound\n"
                             "help Canvas on the MPU-401 port.\n"
-                            "SKIDCFGEND\n");
+                            "SKIDSETEND\n");
     expect("comments, blank lines and indenting are accepted", why == NULL, 1);
     expect("and change nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
     /* A video block carries the two keys a sound block must not. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
                             "video\n"
                             "mode SVGA\n"
                             "disk B\n"
                             "label SVGA graphics\n"
                             "brief SVGA\n"
-                            "SKIDCFGEND\n");
+                            "SKIDSETEND\n");
     expect("a video block is accepted", why == NULL, 1);
     expect("it is a video block", b.video, 1);
     expect_str("its mode", b.mode, "SVGA");
@@ -893,32 +895,32 @@ static void check_block(void)
 
     expect_refused("a block with no magic", "sound\nlabel X\nbrief X\n");
     expect_refused("a block that never ends",
-                   "SKIDCFGDRV01\nsound\nlabel X\nbrief X\n");
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\n");
     expect_refused("a block that is neither sound nor video",
-                   "SKIDCFGDRV01\nlabel X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nlabel X\nbrief X\nSKIDSETEND\n");
     expect_refused("a block that is both",
-                   "SKIDCFGDRV01\nsound\nvideo\nlabel X\nbrief X\n"
-                   "SKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nvideo\nlabel X\nbrief X\n"
+                   "SKIDSETEND\n");
     expect_refused("a kind with a value on it",
-                   "SKIDCFGDRV01\nsound 6\nlabel X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound 6\nlabel X\nbrief X\nSKIDSETEND\n");
     expect_refused("a block with no label",
-                   "SKIDCFGDRV01\nsound\nbrief X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nbrief X\nSKIDSETEND\n");
     expect_refused("a block with no brief",
-                   "SKIDCFGDRV01\nsound\nlabel X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nlabel X\nSKIDSETEND\n");
     expect_refused("a label given twice",
-                   "SKIDCFGDRV01\nsound\nlabel X\nlabel Y\nbrief X\n"
-                   "SKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nlabel X\nlabel Y\nbrief X\n"
+                   "SKIDSETEND\n");
     /* A key this build does not know is ignored, not refused, so that a later
      * format can add one and a driver carrying it still works here. The keys
      * offered are cmd and index, which are the two things the format
-     * deliberately leaves to skidcfg: a driver that tries to declare them is
+     * deliberately leaves to skidset: a driver that tries to declare them is
      * exactly the case this rule has to absorb rather than fail on. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\nsound\nlabel Roland SC-55\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\nsound\nlabel Roland SC-55\n"
                             "brief SC-55\ncmd /ssc\nindex 6\n"
                             "author somebody\n"
                             "help Select if you have a Roland Sound\n"
                             "help Canvas on the MPU-401 port.\n"
-                            "SKIDCFGEND\n");
+                            "SKIDSETEND\n");
     expect("keys this build does not know are ignored", why == NULL, 1);
     expect("and the rest of the block is read as if they were not there",
            memcmp(&a, &b, sizeof a) == 0, 1);
@@ -926,69 +928,69 @@ static void check_block(void)
     /* Which must not have cost the safety net: a required key misspelt is
      * still a refusal, and for the reason that reads best. */
     expect_refused("a misspelt required key",
-                   "SKIDCFGDRV01\nsound\nlabl X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nlabl X\nbrief X\nSKIDSETEND\n");
 
     /* The keys are English words and a help paragraph is English, so they meet.
      * They cannot collide: a key is only a key at the start of a line, and
      * every line of a paragraph carries its own. */
-    why = drv_blk_parse(&b, "SKIDCFGDRV01\nsound\nlabel X\nbrief X\n"
+    why = drv_blk_parse(&b, "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
                             "help The sound and video label on this card\n"
-                            "help needs no help; brief mode disk SKIDCFGEND\n"
-                            "SKIDCFGEND\n");
+                            "help needs no help; brief mode disk SKIDSETEND\n"
+                            "SKIDSETEND\n");
     expect("a paragraph made of this format's own key words is accepted",
            why == NULL, 1);
     expect_str("and survives whole", b.help,
                "The sound and video label\non this card needs no\n"
-               "help; brief mode disk\nSKIDCFGEND");
+               "help; brief mode disk\nSKIDSETEND");
 
     /* The brackets are the screen's. Doubling them up silently would put
      * ((SC-55)) on the main menu. */
     expect_refused("a brief with the brackets already on it",
-                   "SKIDCFGDRV01\nsound\nlabel X\nbrief (SC-55)\n"
-                   "SKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief (SC-55)\n"
+                   "SKIDSETEND\n");
 
     /* Exactly at the limit is a row, one over is a refusal. Both, because a
      * check that only proves the refusal would pass with an off-by-one that
      * rejected a label somebody is entitled to. */
     expect("a label of exactly the sound menu's 31 is accepted",
-           drv_blk_parse(&b, "SKIDCFGDRV01\nsound\n"
+           drv_blk_parse(&b, "SKIDSETDRV01\nsound\n"
                              "label 0123456789012345678901234567890\n"
-                             "brief X\nSKIDCFGEND\n") == NULL,
+                             "brief X\nSKIDSETEND\n") == NULL,
            1);
     expect_refused("a label one over it",
-                   "SKIDCFGDRV01\nsound\n"
+                   "SKIDSETDRV01\nsound\n"
                    "label 01234567890123456789012345678901\n"
-                   "brief X\nSKIDCFGEND\n");
+                   "brief X\nSKIDSETEND\n");
     expect_refused("a label that fits the sound menu but not the video one",
-                   "SKIDCFGDRV01\nvideo\nmode SVGA\n"
+                   "SKIDSETDRV01\nvideo\nmode SVGA\n"
                    "label 0123456789012345678901234\n"
-                   "brief X\nSKIDCFGEND\n");
+                   "brief X\nSKIDSETEND\n");
     expect("a brief of exactly 21 is accepted",
            drv_blk_parse(&b,
-                         "SKIDCFGDRV01\nsound\nlabel X\n"
-                         "brief 012345678901234567890\nSKIDCFGEND\n") == NULL,
+                         "SKIDSETDRV01\nsound\nlabel X\n"
+                         "brief 012345678901234567890\nSKIDSETEND\n") == NULL,
            1);
     expect_refused("a brief one over 21",
-                   "SKIDCFGDRV01\nsound\nlabel X\n"
-                   "brief 0123456789012345678901\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nlabel X\n"
+                   "brief 0123456789012345678901\nSKIDSETEND\n");
     expect_refused("mode on a sound block",
-                   "SKIDCFGDRV01\nsound\nmode SVGA\nlabel X\nbrief X\n"
-                   "SKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\nmode SVGA\nlabel X\nbrief X\n"
+                   "SKIDSETEND\n");
     expect_refused("disk on a sound block",
-                   "SKIDCFGDRV01\nsound\ndisk A\nlabel X\nbrief X\n"
-                   "SKIDCFGEND\n");
+                   "SKIDSETDRV01\nsound\ndisk A\nlabel X\nbrief X\n"
+                   "SKIDSETEND\n");
     expect_refused("a video block with no mode",
-                   "SKIDCFGDRV01\nvideo\nlabel X\nbrief X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nvideo\nlabel X\nbrief X\nSKIDSETEND\n");
     expect_refused("a disk that is not A or B",
-                   "SKIDCFGDRV01\nvideo\nmode SVGA\ndisk C\nlabel X\n"
-                   "brief X\nSKIDCFGEND\n");
+                   "SKIDSETDRV01\nvideo\nmode SVGA\ndisk C\nlabel X\n"
+                   "brief X\nSKIDSETEND\n");
 
     /* A word wider than the window cannot be broken anywhere, so it is a
      * refusal rather than a row that runs off into the desktop. */
     expect_refused("a help word wider than the window",
-                   "SKIDCFGDRV01\nsound\nlabel X\nbrief X\n"
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
                    "help Supercalifragilisticexpialidocious\n"
-                   "SKIDCFGEND\n");
+                   "SKIDSETEND\n");
 
     /* --- the wrapper on its own --- */
 
@@ -996,7 +998,7 @@ static void check_block(void)
     expect("wrapping breaks on spaces", i, 3);
     expect_str("and puts a newline between rows and not after the last",
                wrapped, "one\ntwo\nthree");
-    expect("so skidcfg counts the rows the wrapper made", rows_in(wrapped), i);
+    expect("so skidset counts the rows the wrapper made", rows_in(wrapped), i);
 
     i = drv_blk_wrap(wrapped, (long)sizeof wrapped, "aa\nbb", 8, 4);
     expect("an empty help is a blank row between paragraphs", i, 3);
@@ -1070,7 +1072,7 @@ static void check_block(void)
 
                 /* A comment, so the long line is legal in itself and only its
                  * length is under test. Two of its characters are the "; ". */
-                strcpy(atlimit, "SKIDCFGDRV01");
+                strcpy(atlimit, "SKIDSETDRV01");
                 strcat(atlimit, end);
                 strcat(atlimit, "; ");
                 n = (int)strlen(atlimit);
@@ -1083,7 +1085,7 @@ static void check_block(void)
                 strcat(atlimit, end);
                 strcat(atlimit, "brief X");
                 strcat(atlimit, end);
-                strcat(atlimit, "SKIDCFGEND");
+                strcat(atlimit, "SKIDSETEND");
                 strcat(atlimit, end);
 
                 sprintf(what, "a line of %d characters ending %s", len, how);
@@ -1110,14 +1112,14 @@ static void check_block(void)
     expect("a block's span is the whole of it, terminator included",
            (int)drv_blk_span(BLOCK_OK), (int)strlen(BLOCK_OK));
     expect("text with no terminator in it has no span",
-           (int)drv_blk_span("SKIDCFGDRV01\nsound\n"), 0);
+           (int)drv_blk_span("SKIDSETDRV01\nsound\n"), 0);
     {
-        static const char QUOTED[] = "SKIDCFGDRV01\n"
+        static const char QUOTED[] = "SKIDSETDRV01\n"
                                      "sound\n"
                                      "label X\n"
                                      "brief X\n"
-                                     "help this block says SKIDCFGEND here\n"
-                                     "SKIDCFGEND\n";
+                                     "help this block says SKIDSETEND here\n"
+                                     "SKIDSETEND\n";
 
         expect("and a block quoting the terminator ends where it really ends",
                (int)drv_blk_span(QUOTED), (int)strlen(QUOTED));
@@ -1202,18 +1204,18 @@ static void check_merge(void)
            st->n == drv_sound.n, 1);
     expect("and nothing is skipped", drv_scan_skipped(), 0);
 
-    /* Whether this build already offers what SC15.DRV would, which is exactly
-     * what SKIDCFG_SC55 does: it compiles the row in. Two rows cannot both
-     * write /ssc on line 2, so which of the two things happens next depends on
+    /* Whether this build already offers what ZZ15.DRV would, which is exactly
+     * what SKIDSET_EXTRA does: it compiles the row in. Two rows cannot both
+     * write /szz on line 2, so which of the two things happens next depends on
      * the table, and both are worth checking. */
     already = 0;
     for (i = 0; i < st->n; i++) {
-        if (st->opt[i].cmd != NULL && strcmp(st->opt[i].cmd, "/ssc ") == 0) {
+        if (st->opt[i].cmd != NULL && strcmp(st->opt[i].cmd, "/szz ") == 0) {
             already = 1;
         }
     }
 
-    drv_scan_offer(BLOCK_OK, "SC15.DRV");
+    drv_scan_offer(BLOCK_OK, "ZZ15.DRV");
     if (already) {
         expect("a block for a driver the build already offers adds no row",
                st->n, before);
@@ -1224,11 +1226,11 @@ static void check_merge(void)
 
         o = last_of(st);
         expect_str("its switch comes from the filename and nowhere else",
-                   o->cmd, "/ssc ");
-        expect_str("its brief has the brackets skidcfg adds", o->brief,
+                   o->cmd, "/szz ");
+        expect_str("its brief has the brackets skidset adds", o->brief,
                    "(SC-55)");
         expect_str("and the file it came from is remembered", o->from,
-                   "SC15.DRV");
+                   "ZZ15.DRV");
         expect("its index is above every index the original shipped with",
                o->index >= 6, 1);
         expect("and is one nothing else in the table claims",
@@ -1238,8 +1240,8 @@ static void check_merge(void)
     /* A second driver must not be handed the first one's number. */
     drv_scan_reset();
     st = drv_scan_sound();
-    drv_scan_offer("SKIDCFGDRV01\nsound\nlabel Gravis\nbrief GUS\n"
-                   "SKIDCFGEND\n",
+    drv_scan_offer("SKIDSETDRV01\nsound\nlabel Gravis\nbrief GUS\n"
+                   "SKIDSETEND\n",
                    "GU15.DRV");
     expect("a block for a switch nothing else has becomes a row", st->n,
            before + 1);
@@ -1251,8 +1253,8 @@ static void check_merge(void)
      * is, so a scheme that numbers its drivers has nowhere else to put the
      * number. */
     drv_scan_reset();
-    drv_scan_offer("SKIDCFGDRV01\nsound\nlabel Canvas and Blaster\n"
-                   "brief SC+SB\nSKIDCFGEND\n",
+    drv_scan_offer("SKIDSETDRV01\nsound\nlabel Canvas and Blaster\n"
+                   "brief SC+SB\nSKIDSETEND\n",
                    "M015.DRV");
     expect("a prefix with a digit in it is a driver like any other",
            drv_scan_sound()->n, drv_sound.n + 1);
@@ -1286,30 +1288,35 @@ static void check_merge(void)
      * halves are checked, because the extension and the video carrier are
      * recognised by two separate tests. */
     drv_scan_reset();
-    drv_scan_offer(BLOCK_OK, "sc15.drv");
-    expect("a lower case driver name is still a driver",
-           drv_scan_sound()->n, drv_sound.n + 1);
+    /* CB, because no configuration of the table claims it. A block whose
+     * derived switch a table row already carries is refused as already on the
+     * menu, which is correct and is a different check from this one: offer such
+     * a name here and what gets tested depends on which table was compiled
+     * rather than on case folding. */
+    drv_scan_offer(BLOCK_OK, "cb15.drv");
+    expect("a lower case driver name is still a driver", drv_scan_sound()->n,
+           drv_sound.n + 1);
     expect("and nothing is skipped", drv_scan_skipped(), 0);
     expect_str("and its switch is derived the same way",
-               last_of(drv_scan_sound())->cmd, "/ssc ");
+               last_of(drv_scan_sound())->cmd, "/scb ");
 
     drv_scan_reset();
-    drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\ndisk B\n"
-                   "label SVGA graphics\nbrief SVGA\nSKIDCFGEND\n",
+    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\ndisk B\n"
+                   "label SVGA graphics\nbrief SVGA\nSKIDSETEND\n",
                    "Load.Exe");
     expect("a mixed case LOAD.EXE is still the video carrier",
            drv_scan_video()->n, drv_video.n + 1);
     expect("and nothing is skipped", drv_scan_skipped(), 0);
 
     drv_scan_reset();
-    drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\nlabel SVGA graphics\n"
-                   "brief SVGA\nSKIDCFGEND\n",
+    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\nlabel SVGA graphics\n"
+                   "brief SVGA\nSKIDSETEND\n",
                    "SV15.DRV");
     expect("a video block in a .DRV is skipped", drv_scan_skipped(), 1);
 
     drv_scan_reset();
-    drv_scan_offer("SKIDCFGDRV01\nvideo\nmode SVGA\ndisk B\n"
-                   "label SVGA graphics\nbrief SVGA\nSKIDCFGEND\n",
+    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\ndisk B\n"
+                   "label SVGA graphics\nbrief SVGA\nSKIDSETEND\n",
                    "LOAD.EXE");
     vt = drv_scan_video();
     expect("a video block in LOAD.EXE becomes a row", vt->n, drv_video.n + 1);
@@ -1364,7 +1371,7 @@ static void check_merge(void)
 
         sprintf(name, "X%c15.DRV", (char)('a' + i));
         sprintf(blk,
-                "SKIDCFGDRV01\nsound\nlabel Card %d\nbrief C%d\nSKIDCFGEND\n",
+                "SKIDSETDRV01\nsound\nlabel Card %d\nbrief C%d\nSKIDSETEND\n",
                 i, i);
         drv_scan_offer(blk, name);
     }
@@ -1404,8 +1411,8 @@ static void check_merge(void)
     }
     before = vt->n;
     sprintf(blk,
-            "SKIDCFGDRV01\nvideo\nmode %s\nlabel Another one\n"
-            "brief another\nSKIDCFGEND\n",
+            "SKIDSETDRV01\nvideo\nmode %s\nlabel Another one\n"
+            "brief another\nSKIDSETEND\n",
             mode);
     drv_scan_offer(blk, "LOAD.EXE");
     expect("a mode already on the menu, written in the other case, adds no row",
@@ -1428,8 +1435,8 @@ static void check_merge(void)
 
         before = vt->n;
         sprintf(blk,
-                "SKIDCFGDRV01\nvideo\nmode %s\ndisk B\nlabel VGA graphics\n"
-                "brief VGA\nSKIDCFGEND\n",
+                "SKIDSETDRV01\nvideo\nmode %s\ndisk B\nlabel VGA graphics\n"
+                "brief VGA\nSKIDSETEND\n",
                 mode);
         drv_scan_offer(blk, "LOAD.EXE");
         expect("a block naming a row that has no label adds no row", vt->n,
@@ -1437,7 +1444,7 @@ static void check_merge(void)
         expect("and is not skipped", drv_scan_skipped(), 0);
         expect_str("it fills in the label the row never had", vt->opt[i].label,
                    "VGA graphics");
-        expect_str("and the brief, with the brackets skidcfg adds",
+        expect_str("and the brief, with the brackets skidset adds",
                    vt->opt[i].brief, "(VGA)");
         expect_str("and the disk, which is the whole of line 4",
                    vt->opt[i].disk, "disk 'B'");
@@ -1468,21 +1475,21 @@ static void check_merge(void)
  */
 #ifdef SK_SCREEN
 
-static const char VBLOCK1[] = "SKIDCFGDRV01\n"
-                              "; a comment quoting SKIDCFGDRV01 at it\n"
+static const char VBLOCK1[] = "SKIDSETDRV01\n"
+                              "; a comment quoting SKIDSETDRV01 at it\n"
                               "video\n"
                               "mode SVGA\n"
                               "disk B\n"
                               "label SVGA graphics\n"
                               "brief SVGA\n"
-                              "SKIDCFGEND\n";
+                              "SKIDSETEND\n";
 
-static const char VBLOCK2[] = "SKIDCFGDRV01\n"
+static const char VBLOCK2[] = "SKIDSETDRV01\n"
                               "video\n"
                               "mode XGA\n"
                               "label XGA graphics\n"
                               "brief XGA\n"
-                              "SKIDCFGEND\n";
+                              "SKIDSETEND\n";
 
 #    define FILLER 40000L
 
@@ -1515,8 +1522,8 @@ static void carrier_of(int blocks)
     }
     for (i = 0; i < blocks; i++) {
         fprintf(f,
-                "SKIDCFGDRV01\nvideo\nmode M%d\nlabel Mode %d\n"
-                "brief M%d\nSKIDCFGEND\n",
+                "SKIDSETDRV01\nvideo\nmode M%d\nlabel Mode %d\n"
+                "brief M%d\nSKIDSETEND\n",
                 i, i, i);
     }
     fclose(f);
@@ -1778,6 +1785,115 @@ static void check_missing(void)
     drv_scan_reset();
 }
 
+/* ------------------------------------------ what a default may be chosen from
+ * --
+ *
+ * The row a machine with no SETUP.DAT gets. It has to be a row that machine
+ * could have chosen from the menu, which is not the same as a row the table
+ * has: hide_missing takes a row off the menu when the driver behind it is
+ * gone, and the configured fallback is not exempt.
+ *
+ * Measured before the fix, on a stock table under DOS with PC15.DRV renamed
+ * away: rows 0 and 1 both need that file, both were hidden, the fallback
+ * stayed at 1 and an immediate Exit wrote "load.exe /u MCGA  /spc". With
+ * SKIDSET_EXTRA it was worse, because ZZ15.DRV never exists at all, so the
+ * documented example build wrote /szz every time.
+ *
+ * This runs in all three table shapes. A hosted build decides what is hidden
+ * by which files exist, the same way check_missing does, so the case is
+ * reachable without a game directory.
+ */
+static int is_offered(const struct drv_tab *t, int index)
+{
+    int i;
+
+    for (i = 0; i < t->n; i++) {
+        if (t->opt[i].index == index) {
+            return t->opt[i].label != NULL && !t->opt[i].hidden;
+        }
+    }
+    return 0;
+}
+
+static void check_fallback(void)
+{
+    const struct drv_tab *st;
+    const char           *needed;
+    struct setup          s;
+    int                   full;
+
+    printf("\n--    the default is a row the menu offered\n");
+
+    drivers_on_disk(1);
+    drv_scan_reset();
+    drv_scan_finish();
+    st = drv_scan_sound();
+    full = drv_rows(st);
+    setup_default(&s);
+    expect("with every driver present, the default is offered",
+           is_offered(st, s.sound), 1);
+
+    needed = NULL;
+    {
+        const struct drv_opt *o = drv_find(st, st->fallback);
+
+        if (o != NULL) {
+            needed = o->needs;
+        }
+    }
+    if (needed == NULL) {
+        printf("--    this table's fallback needs no file, so there is\n"
+               "--    nothing here to take away\n");
+        drivers_on_disk(0);
+        drv_scan_reset();
+        return;
+    }
+
+    /* Take away only what the fallback needs. If that empties the menu the
+     * table is one where hiding is refused outright, and the fallback staying
+     * put is the right answer; test/drvmin.h is that table. */
+    remove(needed);
+    drv_scan_reset();
+    drv_scan_finish();
+    st = drv_scan_sound();
+    setup_default(&s);
+
+    if (drv_rows(st) == full) {
+        expect("a file every row needs hides nothing, so the default stands",
+               is_offered(st, s.sound), 1);
+    } else {
+        expect("the fallback's own driver is gone, so it is not offered",
+               is_offered(st, drv_sound.fallback), 0);
+        expect("and the default moved to a row that is",
+               is_offered(st, s.sound), 1);
+        /* The whole point: what gets written names something on the disk. */
+        expect("writing it succeeds", setup_write(&s, DAT), 0);
+        {
+            const struct drv_opt *bad = drv_find(st, drv_sound.fallback);
+            char                  got[DATMAX];
+            FILE                 *f = fopen(DAT, "rb");
+            size_t                n = 0;
+
+            /* Read here rather than through read_bytes, which lives behind
+             * DRV_TABLE_STOCK and so is absent from the cut down build this
+             * check also has to run in. */
+            if (f != NULL) {
+                n = fread(got, 1, (size_t)DATMAX - 1, f);
+                fclose(f);
+            }
+            got[n] = '\0';
+            if (bad != NULL && bad->cmd != NULL && n > 0) {
+                expect("and the file does not name the missing driver",
+                       strstr(got, bad->cmd) != NULL, 0);
+            }
+        }
+        remove(DAT);
+    }
+
+    drivers_on_disk(0);
+    drv_scan_reset();
+}
+
 /* ------------------------------------------------------------- installing --
  *
  * What src/install.c makes of a directory before it moves anything. Every
@@ -1805,7 +1921,7 @@ static void check_install(void)
 {
     /* Long enough that the marker is not the whole file, the way it is not in
      * a real one. The bytes around it do not matter. */
-    static const char OURS[] = "MZ...." SKIDCFG_MARK "....";
+    static const char OURS[] = "MZ...." SKIDSET_MARK "....";
     static const char THEIRS[] = "MZ.... some other setup program ....";
 
     printf("\n--    what state a game directory is in\n");
@@ -1859,6 +1975,23 @@ static void check_install(void)
  */
 static void check_classify(void)
 {
+    printf("\n--    one DOS name ordered against another\n");
+
+    /* The menu order and, past the scan limit, which drivers are kept at all.
+     * DOS folds its names so bytewise order is already DOS order there, but
+     * Windows preserves what was stored, and under strcmp every upper case
+     * name sorts ahead of every lower case one: aa15.drv and ZZ15.DRV would
+     * come back in one order and AA15.DRV and ZZ15.DRV in another, from the
+     * same two drivers. */
+    expect("aa sorts before ZZ, whatever the case",
+           sk_name_cmp("aa15.drv", "ZZ15.DRV") < 0, 1);
+    expect("and so does AA", sk_name_cmp("AA15.DRV", "ZZ15.DRV") < 0, 1);
+    expect("ZZ sorts after aa", sk_name_cmp("ZZ15.DRV", "aa15.drv") > 0, 1);
+    expect("one name is equal to its own other spelling",
+           sk_name_cmp("Sc15.Drv", "sC15.dRV"), 0);
+    expect("a prefix sorts before what extends it",
+           sk_name_cmp("ZZ15", "ZZ15.DRV") < 0, 1);
+
     printf("\n--    the end of a search and the end of a directory\n");
 
 #if defined(SK_DOS)
@@ -1876,10 +2009,10 @@ static void check_classify(void)
     /* The two that were wrong. Error 2 or 3 arriving at findnext is the path
      * going away under a walk that had already returned a name, and calling
      * that the end of the directory is how a partial list passes for whole. */
-    expect("findnext with file not found is an error",
-           (int)sk_classify_next(2), (int)SK_FIND_ERROR);
-    expect("findnext with path not found is an error",
-           (int)sk_classify_next(3), (int)SK_FIND_ERROR);
+    expect("findnext with file not found is an error", (int)sk_classify_next(2),
+           (int)SK_FIND_ERROR);
+    expect("findnext with path not found is an error", (int)sk_classify_next(3),
+           (int)SK_FIND_ERROR);
     expect("access denied is an error", (int)sk_classify_next(5),
            (int)SK_FIND_ERROR);
     expect("and so is an invalid drive", (int)sk_classify_first(15),
@@ -1963,7 +2096,8 @@ static void check_hidden(void)
     fputs("settings", f);
     fclose(f);
 
-    expect("an ordinary scratch file is present", sk_presence(NAME) == SK_PRESENT, 1);
+    expect("an ordinary scratch file is present",
+           sk_presence(NAME) == SK_PRESENT, 1);
 
     if (!hide(NAME)) {
         printf("skip  cannot set the hidden attribute on %s\n", NAME);
@@ -2021,9 +2155,12 @@ static void check_hidden(void)
  *
  * So it refuses to start anywhere it might do that. Every name it could touch
  * is listed and looked for first, and finding any of them is a refusal rather
- * than a question. That is the whole guard: it needs no directory calls, which
- * differ between the two DOS compilers, and it cannot be got wrong by a test
- * added later as long as the name goes in the list.
+ * than a question, so it cannot be got wrong by a test added later as long as
+ * the name goes in the list.
+ *
+ * The list cannot cover everything. check_directory() writes three dozen
+ * drivers named after nothing in particular, so the wildcard sweep below is
+ * what stands in front of those, and it is a directory call.
  */
 static const char *const SCRATCH[] = {"SCTEST.DAT", "SCTEST.$N$", "SCTEST.$O$",
                                       "SETUP.EXE",  "SETUP.ORG",  "SETUP.$$$",
@@ -2121,6 +2258,7 @@ int main(void)
     check_hidden();
 #endif
     check_missing();
+    check_fallback();
 #ifdef DRV_TABLE_STOCK
     check_stock();
 #else

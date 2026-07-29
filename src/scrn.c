@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #include "scrn.h"
-#include "skidcfg.h"
+#include "skidset.h"
 
 #ifdef SK_DOS
 

@@ -1,7 +1,7 @@
 /* The main menu's own help paragraphs, and the one message the program shows
  * that is not help at all.
  *
- * In a header rather than in skidcfg.c because test/selfchk.c checks that
+ * In a header rather than in skidset.c because test/selfchk.c checks that
  * every one of them fits the window F1 opens, the same way it checks the
  * driver table's, and a check holding its own copy of the text would not be
  * checking anything. Nothing else in the tree is allowed to know this text.
@@ -21,7 +21,7 @@
 #ifndef MAINHLP_H
 #define MAINHLP_H
 
-/* Indices 0 to 3 are the four main menu rows in order, so skidcfg.c reaches
+/* Indices 0 to 3 are the four main menu rows in order, so skidset.c reaches
  * them with the same MAIN_ constants it draws them with. Index 4 is not a help
  * paragraph: it is what choosing the install row says. It lives here so that
  * it is measured against the window it opens in, which is the same window. */
@@ -87,7 +87,7 @@ static const char *const main_help[MAIN_HELP_N] = {
      * a row that looks broken. */
     "This copies the game off\n"
     "its floppy disks onto a\n"
-    "hard disk. SKIDCFG does\n"
+    "hard disk. SKIDSET does\n"
     "not do that part: it\n"
     "sets up a game that is\n"
     "already installed, and\n"

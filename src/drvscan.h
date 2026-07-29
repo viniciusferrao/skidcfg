@@ -34,7 +34,7 @@
 #include "drvblk.h"
 
 /* Room for what a scan may add, over and above what is built in. Both are the
- * menu's ten rows less the stock ones; see ROWS_MAX in src/skidcfg.c for where
+ * menu's ten rows less the stock ones; see ROWS_MAX in src/skidset.c for where
  * ten comes from. */
 #define DRV_SCAN_SOUND_MAX 4
 #define DRV_SCAN_VIDEO_MAX 5
@@ -75,7 +75,7 @@ const struct drv_tab *drv_scan_sound(void);
 
 /* The blocks that were read and not used. Nothing is ever skipped silently:
  * a driver that does not appear on the menu has a file and a reason here, and
- * SKIDCFG /D prints them. More refusals than the list holds come out as a
+ * SKIDSET /D prints them. More refusals than the list holds come out as a
  * count on the last line rather than as nothing at all. */
 int         drv_scan_skipped(void);
 const char *drv_scan_skip_file(int i);

@@ -1,16 +1,16 @@
-/* The helpers skidcfg.h declares: the ones more than one file wanted, and the
+/* The helpers skidset.h declares: the ones more than one file wanted, and the
  * directory call that every compiler here spells its own way.
  *
  * Nothing in this file knows what the program is for. It is here so that the
  * files that do know are about their own subject.
  *
- * The platform headers come in through skidcfg.h, which needs them to declare
+ * The platform headers come in through skidset.h, which needs them to declare
  * struct sk_find.
  */
 #include <stdio.h>
 #include <string.h>
 
-#include "skidcfg.h"
+#include "skidset.h"
 
 int sk_is_blank(int c)
 {
@@ -39,16 +39,24 @@ int sk_alnum(int c)
            (c >= '0' && c <= '9');
 }
 
-int sk_name_eq(const char *a, const char *b)
+int sk_name_cmp(const char *a, const char *b)
 {
     while (*a != '\0' && *b != '\0') {
-        if (sk_upcase((unsigned char)*a) != sk_upcase((unsigned char)*b)) {
-            return 0;
+        int ca = sk_upcase((unsigned char)*a);
+        int cb = sk_upcase((unsigned char)*b);
+
+        if (ca != cb) {
+            return ca - cb;
         }
         a++;
         b++;
     }
-    return *a == *b;
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
+int sk_name_eq(const char *a, const char *b)
+{
+    return sk_name_cmp(a, b) == 0;
 }
 
 /* --------------------------------------------------------- the directory --

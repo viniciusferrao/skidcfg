@@ -26,7 +26,7 @@
  * edit still run, and still pass.
  *
  * A SETUP.DAT naming a driver this build does not have, an MT-32 say, is
- * refused rather than misread, and skidcfg falls back to what is here. That is
+ * refused rather than misread, and skidset falls back to what is here. That is
  * the case removability introduces and setup.c handles it.
  */
 

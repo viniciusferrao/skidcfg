@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "install.h"
-#include "skidcfg.h"
+#include "skidset.h"
 #include "version.h"
 
 #define SETUP_EXE "SETUP.EXE"
@@ -14,8 +14,8 @@
  * the same as every other file here that this program did not put down. */
 #define SETUP_TMP "SETUP.$$$"
 /* What to call the file the user ran. Not a constant: the DOS archive ships
- * SKIDCFG.EXE and SKIDCF32.EXE, both of which install, so a message naming
- * SKIDCFG.EXE after an install done with the 32-bit one sends somebody to
+ * SKIDSET.EXE and SKIDST32.EXE, both of which install, so a message naming
+ * SKIDSET.EXE after an install done with the 32-bit one sends somebody to
  * delete the wrong file. argv[0] is the only thing that knows, and only /I
  * still has it: by the time /U runs, the copy that did the installing is
  * whatever it was and nothing recorded it. That message says so instead of
@@ -26,14 +26,14 @@ static const char *base_of(const char *path)
     const char *p;
 
     if (path == NULL) {
-        return SKIDCFG_NAME ".EXE";
+        return SKIDSET_NAME ".EXE";
     }
     for (p = path; *p != '\0'; p++) {
         if (*p == '\\' || *p == '/' || *p == ':') {
             b = p + 1;
         }
     }
-    return *b == '\0' ? SKIDCFG_NAME ".EXE" : b;
+    return *b == '\0' ? SKIDSET_NAME ".EXE" : b;
 }
 
 /* How this recognises its own binary. The marker is part of the title line, so
@@ -41,7 +41,7 @@ static const char *base_of(const char *path)
  * still draws its own screen, and it carries no version number so that
  * /U recognises a copy installed by a different release. See version.h.
  */
-static const char MARK[] = SKIDCFG_MARK;
+static const char MARK[] = SKIDSET_MARK;
 
 /* 8 KB is more than the largest run this ever copies and small enough for the
  * stack MSC 5.10 links with. It is static rather than automatic for that
@@ -58,11 +58,7 @@ static char buf[8192];
  * another. Every other ambiguous state here is refused and named, and a
  * failing disk under SETUP.ORG is the same kind of ambiguity as a SETUP.ORG
  * that turned out to be ours. */
-enum mark {
-    MARK_NO,
-    MARK_YES,
-    MARK_UNREADABLE
-};
+enum mark { MARK_NO, MARK_YES, MARK_UNREADABLE };
 
 static enum mark marked(const char *path)
 {
@@ -172,7 +168,7 @@ enum inst_state inst_state(void)
             return INST_FOREIGN;
         }
         /* And what SETUP.ORG is, not merely that it exists. Where both files
-         * are skidcfg the original is not here under either name, so /U would
+         * are skidset the original is not here under either name, so /U would
          * announce that it had been restored while putting one copy of this
          * program where another was. Nothing in the ordinary path reaches
          * that, but the ordinary path is not what these states are for: every
@@ -197,7 +193,7 @@ int inst_install(const char *self)
     switch (st) {
     case INST_DONE:
         printf("Already installed. %s is %s and the original is %s.\n",
-               SETUP_EXE, SKIDCFG_NAME, SETUP_ORG);
+               SETUP_EXE, SKIDSET_NAME, SETUP_ORG);
         return 0;
     case INST_ABSENT:
         printf("There is no %s here. Run this from the directory the game is\n"
@@ -208,20 +204,20 @@ int inst_install(const char *self)
         printf("%s is already here and %s is not %s, so this cannot say\n"
                "which of them is the original. Nothing changed. Sort the two\n"
                "out by hand and run this again.\n",
-               SETUP_ORG, SETUP_EXE, SKIDCFG_NAME);
+               SETUP_ORG, SETUP_EXE, SKIDSET_NAME);
         return 1;
     case INST_ORG_OURS:
         printf("Both %s and %s are %s, so the original setup\n"
                "program is not here under either name and this cannot put it\n"
                "back. Nothing changed. Restore %s from the game disks\n"
                "or from a copy before running this again.\n",
-               SETUP_EXE, SETUP_ORG, SKIDCFG_NAME, SETUP_ORG);
+               SETUP_EXE, SETUP_ORG, SKIDSET_NAME, SETUP_ORG);
         return 1;
     case INST_UNSURE:
         printf("%s looks like %s already but there is no %s to put back\n"
                "afterwards, so installing would leave no way out. Nothing\n"
                "changed.\n",
-               SETUP_EXE, SKIDCFG_NAME, SETUP_ORG);
+               SETUP_EXE, SKIDSET_NAME, SETUP_ORG);
         return 1;
     case INST_UNREAD:
         printf("%s or %s is here and cannot be read through, so what is in\n"
@@ -265,7 +261,7 @@ int inst_install(const char *self)
     printf("%s has been installed.\n"
            "%s is now %s and the original program has been backed up.\n"
            "Run %s /U to uninstall %s.\n",
-           SKIDCFG_NAME, SETUP_EXE, base_of(self), SETUP_EXE, SKIDCFG_NAME);
+           SKIDSET_NAME, SETUP_EXE, base_of(self), SETUP_EXE, SKIDSET_NAME);
     return 0;
 }
 
@@ -281,7 +277,7 @@ int inst_uninstall(void)
     case INST_FOREIGN:
         printf("%s is here but %s is not %s, so this did not put it\n"
                "anywhere and will not take it away. Nothing changed.\n",
-               SETUP_ORG, SETUP_EXE, SKIDCFG_NAME);
+               SETUP_ORG, SETUP_EXE, SKIDSET_NAME);
         return 1;
     case INST_ORG_OURS:
         /* Refused for the reason INST_UNSURE is, one name along: what would
@@ -291,7 +287,7 @@ int inst_uninstall(void)
         printf("%s is %s and so is %s, so the original is not\n"
                "here under either name and there is nothing to put back.\n"
                "Nothing changed.\n",
-               SETUP_EXE, SKIDCFG_NAME, SETUP_ORG);
+               SETUP_EXE, SKIDSET_NAME, SETUP_ORG);
         return 1;
     case INST_UNSURE:
         /* The state install refuses for the same reason: this program is
@@ -302,7 +298,7 @@ int inst_uninstall(void)
         printf("%s is %s but there is no %s to put back, so there is\n"
                "nothing to undo and removing it would leave you with no\n"
                "%s at all. Nothing changed.\n",
-               SETUP_EXE, SKIDCFG_NAME, SETUP_ORG, SETUP_EXE);
+               SETUP_EXE, SKIDSET_NAME, SETUP_ORG, SETUP_EXE);
         return 1;
     case INST_UNREAD:
         /* The file this would rename into place is the one thing it has to be
@@ -336,7 +332,7 @@ int inst_uninstall(void)
         if (rename(SETUP_TMP, SETUP_EXE) != 0) {
             printf("\nThe original is still here, under the name %s, and\n"
                    "%s is now called %s. Rename either one to %s.\n",
-                   SETUP_ORG, SKIDCFG_NAME, SETUP_TMP, SETUP_EXE);
+                   SETUP_ORG, SKIDSET_NAME, SETUP_TMP, SETUP_EXE);
         }
         return 1;
     }
@@ -351,7 +347,7 @@ int inst_uninstall(void)
         printf("%s has been uninstalled and %s has been restored.\n"
                "%s could not be removed, so it is still here; it is a copy of\n"
                "%s and deleting it by hand finishes the job.\n",
-               SKIDCFG_NAME, SETUP_EXE, SETUP_TMP, SKIDCFG_NAME);
+               SKIDSET_NAME, SETUP_EXE, SETUP_TMP, SKIDSET_NAME);
         return 0;
     }
 
@@ -363,6 +359,6 @@ int inst_uninstall(void)
     printf("%s has been uninstalled.\n"
            "%s has been restored.\n"
            "To fully remove %s, also remove the copy you originally ran.\n",
-           SKIDCFG_NAME, SETUP_EXE, SKIDCFG_NAME);
+           SKIDSET_NAME, SETUP_EXE, SKIDSET_NAME);
     return 0;
 }

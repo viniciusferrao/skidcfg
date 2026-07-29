@@ -71,7 +71,7 @@ extern const struct drv_tab drv_sound;
  * to 74, and it grows downwards from row 7 until its shadow would reach the
  * footer. A paragraph that does not fit is the one thing about an entry that a
  * compiler cannot catch: it runs off into the desktop, and nothing says so
- * until it is on a screen. Both numbers are facts about src/skidcfg.c's layout
+ * until it is on a screen. Both numbers are facts about src/skidset.c's layout
  * and live here rather than there because test/selfchk.c checks every
  * paragraph against them and the check must not have its own copy. */
 #define DRV_HELP_COLS 26
@@ -79,7 +79,7 @@ extern const struct drv_tab drv_sound;
 
 /* How many rows a menu can have. A window grows a row per entry and its shadow
  * has to clear the footer on row 24, and the submenus start at row 11, so ten
- * is where a menu runs out of screen. It lives here because src/skidcfg.c
+ * is where a menu runs out of screen. It lives here because src/skidset.c
  * draws against it and src/drvscan.c refuses an eleventh row against it, and
  * the two must not have separate copies of the number. */
 #define DRV_ROWS_MAX 10
@@ -87,7 +87,7 @@ extern const struct drv_tab drv_sound;
 /* What every video fragment starts with. Line 2 of SETUP.DAT is a command
  * line, and the video half of it is the invocation, so a video row carries the
  * program name and a sound row is a switch on the end. src/drvscan.c builds
- * one out of a block's mode, and src/skidcfg.c drops it from a column. */
+ * one out of a block's mode, and src/skidset.c drops it from a column. */
 #define DRV_VIDEO_CMD "load.exe /u "
 
 /* How many rows the menu has, which is the entries that have a label. */

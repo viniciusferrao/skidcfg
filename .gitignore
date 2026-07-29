@@ -1,25 +1,32 @@
 # Build output, in the spellings the various toolchains produce.
 /build/
-/skidcfg
-/skidcfg.exe
-/SKIDCFG.EXE
-/skidcfg-sc55
+/build-rehearse/
+/skidset
+/skidset.exe
+/SKIDSET.EXE
+/SKIDST32.EXE
+/SKIDSTW.EXE
+/SKIDCHK.EXE
+/SKIDCK32.EXE
+/SKIDCKW.EXE
 /selfcheck
 /selfcheck.exe
-/selfcheck-sc55
+/selfcheck-extra
 /selfcheck-min
 /drvtab.bak
-/SKIDCHK.EXE
 *.o
 *.obj
 *.OBJ
 *.map
 *.MAP
 
+# What a release generates and packages. None of it is source, and the last
+# rename put a 78 KB executable in a commit because this file still named the
+# old one: a pattern here is the only thing standing between a build artifact
+# and the history.
 /README.TXT
 /LICENSE.TXT
-/SKIDCF32.EXE
-/SKIDCK32.EXE
 /DOS32A.TXT
-/SKIDCFW.EXE
-/SKIDCKW.EXE
+/SKIDST*.ZIP
+/skidset-*-win32.zip
+/SHA256SUMS

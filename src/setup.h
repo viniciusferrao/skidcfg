@@ -39,7 +39,7 @@
  * allowed to name a driver, and a preselected driver is a named one.
  *
  * Where the two indices came from. Only FROM_INDICES is worth a word on the
- * screen, and skidcfg.c says it: it means the command line was unreadable and
+ * screen, and skidset.c says it: it means the command line was unreadable and
  * has been rebuilt out of line 1, which is a repair of somebody's file. */
 enum setup_origin {
     SETUP_FROM_CMDLINE, /* line 2, which is what the game obeys */

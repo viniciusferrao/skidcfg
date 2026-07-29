@@ -6,8 +6,8 @@
  * reason it exists is that the alternative was five copies of the same host
  * test and two copies of the same three-line function.
  */
-#ifndef SKIDCFG_H
-#define SKIDCFG_H
+#ifndef SKIDSET_H
+#define SKIDSET_H
 
 /* --- which machine ---------------------------------------------------------
  *
@@ -76,6 +76,16 @@ int sk_lower(int c);
  * is being opened. */
 int sk_name_eq(const char *a, const char *b);
 
+/* The same folding, ordered: negative, zero or positive the way strcmp is.
+ *
+ * Sorting a driver list needs this for the reason recognising one does. DOS
+ * hands names back folded up, so bytewise order there is already DOS order.
+ * Windows preserves what somebody stored, and under strcmp every upper case
+ * name sorts before every lower case one, so the same drivers copied in with
+ * different capitalisation give a different menu order and, past the scan
+ * limit, a different set of drivers kept. */
+int sk_name_cmp(const char *a, const char *b);
+
 /* An ASCII letter or digit. A driver prefix may hold either, which is
  * measured: M015.DRV answers to /sm0, with M0SKIDMS.VCE beside it. Two
  * characters is the whole namespace, so a scheme that numbers its drivers has
@@ -95,11 +105,7 @@ int sk_alnum(int c);
  *
  * Every caller treats SK_UNKNOWN as the dangerous answer rather than the
  * convenient one: a file that might be there is in the way. */
-enum sk_presence {
-    SK_ABSENT,
-    SK_PRESENT,
-    SK_UNKNOWN
-};
+enum sk_presence { SK_ABSENT, SK_PRESENT, SK_UNKNOWN };
 
 /* fopen cannot answer this. It fails for a file that is not there and for a
  * file that is there and busy, and DOS has plenty of the second: a network
@@ -168,11 +174,7 @@ typedef ptrdiff_t sk_find_handle;
  * is aligned however its own compiler wants it. Behind a char array it started
  * at offset 13, which is a misaligned first member on every one of these
  * targets. */
-enum sk_find_result {
-    SK_FIND_ERROR = -1,
-    SK_FIND_END = 0,
-    SK_FIND_MATCH = 1
-};
+enum sk_find_result { SK_FIND_ERROR = -1, SK_FIND_END = 0, SK_FIND_MATCH = 1 };
 
 struct sk_find {
 #if defined(SK_DOS) && defined(__TURBOC__)

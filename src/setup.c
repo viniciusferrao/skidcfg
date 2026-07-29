@@ -4,7 +4,7 @@
 #include "drivers.h"
 #include "drvscan.h"
 #include "setup.h"
-#include "skidcfg.h"
+#include "skidset.h"
 
 /* Six lines is the whole file. Reading more would only give the parsers below
  * more places to find a match they should not. */
@@ -318,7 +318,7 @@ int setup_read(struct setup *s, const char *path)
  *
  * Not .$$$, which is src/install.c's. Every scratch name in this program is
  * private to the one file that makes it, and these two have to be: a failed
- * uninstall leaves the copy of skidcfg under install.c's name, and a writer
+ * uninstall leaves the copy of skidset under install.c's name, and a writer
  * sharing it would open that "wb" and destroy the only way back. */
 #define TMP_NEW "$N$"
 #define TMP_OLD "$O$"
@@ -348,8 +348,20 @@ static int temp_name(char *out, int max, const char *path, const char *ext)
 }
 
 /* The last refusal, for a caller to print. Static because the alternative is
- * an out parameter on a function whose callers mostly do not want one. */
-static char why[80];
+ * an out parameter on a function whose callers mostly do not want one.
+ *
+ * Sized for the worst message rather than for the ones this program actually
+ * produces. Every refusal below is a fixed sentence with one or two paths in
+ * it, and a path here can be LINEMAX, so two of them plus the longest sentence
+ * is what has to fit. It was 80, which is what the messages come to when the
+ * path is SETUP.DAT, and C89 has no snprintf to hold the line at that. GCC's
+ * -Wformat-overflow is what pointed it out: "up to 255 bytes into a region of
+ * size 80". Nothing in the program passes a path long enough to reach it, and
+ * that is not a reason to leave an unbounded sprintf pointed at a fixed
+ * buffer. */
+#define WHY_MAX (2 * LINEMAX + 64)
+
+static char why[WHY_MAX];
 
 const char *setup_why(void)
 {

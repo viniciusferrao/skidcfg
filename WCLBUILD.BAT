@@ -1,5 +1,5 @@
 @echo off
-rem Build skidcfg with Open Watcom 1.9, 16-bit DOS, large model.
+rem Build skidset with Open Watcom 1.9, 16-bit DOS, large model.
 rem
 rem MSCBUILD.BAT is the period build and the one the sources were written
 rem against; this is the one a release is built with, for a reason that is
@@ -13,8 +13,8 @@ rem CI knows about, which is the thing worth avoiding: this file is here in the
 rem tree, README.md names it, and it builds the same sources with no #ifdef of
 rem its own.
 rem
-rem   WCLBUILD          SKIDCFG.EXE and SKIDCHK.EXE, 16-bit, 8086
-rem   WCLBUILD 386      SKIDCF32.EXE and SKIDCK32.EXE, 32-bit, DOS/32A bound in
+rem   WCLBUILD          SKIDSET.EXE and SKIDCHK.EXE, 16-bit, 8086
+rem   WCLBUILD 386      SKIDST32.EXE and SKIDCK32.EXE, 32-bit, DOS/32A bound in
 rem
 rem The 16-bit binary is the one every machine the game runs on can load, and
 rem is what a release leads with. The 32-bit one wants a 386 and carries the
@@ -85,16 +85,16 @@ rem target produces: a 16-bit build has no business deleting the 386 pair. A
 rem batch file here cannot set an errorlevel, so a caller has the message and
 rem the files to go on, and a working binary from last time sitting beside a
 rem failed rebuild makes the second of those lie.
-if exist ..\SKIDCFG.EXE del ..\SKIDCFG.EXE
+if exist ..\SKIDSET.EXE del ..\SKIDSET.EXE
 if exist ..\SKIDCHK.EXE del ..\SKIDCHK.EXE
 
-wcl -bt=dos -ml -0 -w3 -k8192 *.c -fe=..\SKIDCFG.EXE
+wcl -bt=dos -ml -0 -w3 -k8192 *.c -fe=..\SKIDSET.EXE
 if errorlevel 1 goto fail
 del *.obj
 
 rem The self-check, from the same sources the program is built from. It needs no
 rem game data and no screen, so a release can run it against the binary it is
-rem about to ship. skidcfg.c is left out because selfchk.c brings its own
+rem about to ship. skidset.c is left out because selfchk.c brings its own
 rem main().
 rem
 rem One physical line, however long it looks. The caret is cmd.exe's line
@@ -109,7 +109,7 @@ del *.obj
 cd ..
 
 echo.
-echo Built SKIDCFG.EXE and SKIDCHK.EXE. Check the build with:
+echo Built SKIDSET.EXE and SKIDCHK.EXE. Check the build with:
 echo     SKIDCHK
 if "%OS%"=="Windows_NT" exit /b 0
 goto end
@@ -129,9 +129,9 @@ rem No -k here. The extender gives the program a flat stack of its own and the
 rem 2 KB DOS default does not apply, which is the one place this target is less
 rem fussy than the other.
 :build386
-if exist ..\SKIDCF32.EXE del ..\SKIDCF32.EXE
+if exist ..\SKIDST32.EXE del ..\SKIDST32.EXE
 if exist ..\SKIDCK32.EXE del ..\SKIDCK32.EXE
-wcl386 -bt=dos -l=dos32a -w3 *.c -fe=..\SKIDCF32.EXE
+wcl386 -bt=dos -l=dos32a -w3 *.c -fe=..\SKIDST32.EXE
 if errorlevel 1 goto fail
 del *.obj
 if exist __wcl__.lnk del __wcl__.lnk
@@ -144,7 +144,7 @@ if exist __wcl__.lnk del __wcl__.lnk
 cd ..
 
 echo.
-echo Built SKIDCF32.EXE and SKIDCK32.EXE. Check the build with:
+echo Built SKIDST32.EXE and SKIDCK32.EXE. Check the build with:
 echo     SKIDCK32
 if "%OS%"=="Windows_NT" exit /b 0
 goto end
@@ -187,9 +187,9 @@ rem No -l: a Win32 executable needs no extender.
 rem The NT headers are a directory below the common ones, and windows.h is
 rem only there. wcl386 -bt=nt does not add it to INCLUDE by itself.
 set INCLUDE=%WATCOM%\H;%WATCOM%\H\NT
-if exist ..\SKIDCFW.EXE del ..\SKIDCFW.EXE
+if exist ..\SKIDSTW.EXE del ..\SKIDSTW.EXE
 if exist ..\SKIDCKW.EXE del ..\SKIDCKW.EXE
-wcl386 -bt=nt -w3 *.c -fe=..\SKIDCFW.EXE
+wcl386 -bt=nt -w3 *.c -fe=..\SKIDSTW.EXE
 if errorlevel 1 goto fail
 del *.obj
 if exist __wcl__.lnk del __wcl__.lnk
@@ -201,7 +201,7 @@ if exist __wcl__.lnk del __wcl__.lnk
 cd ..
 
 echo.
-echo Built SKIDCFW.EXE and SKIDCKW.EXE. Check the build with:
+echo Built SKIDSTW.EXE and SKIDCKW.EXE. Check the build with:
 echo     SKIDCKW
 if "%OS%"=="Windows_NT" exit /b 0
 

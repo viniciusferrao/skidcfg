@@ -4,7 +4,7 @@
 
 #include "drvblk.h"
 #include "drvscan.h"
-#include "skidcfg.h"
+#include "skidset.h"
 
 /* The indices the original shipped with, which no block may ever be given.
  * Sound 0 to 5 and video 0 to 4 mean what they meant in 1991, so allocation
@@ -27,7 +27,7 @@
  * and the file buffer they were read from is about to be reused. */
 struct ext {
     char label[DRV_LABEL_SOUND_MAX + 1];
-    char brief[DRV_BRIEF_MAX + 3]; /* with the brackets skidcfg adds */
+    char brief[DRV_BRIEF_MAX + 3]; /* with the brackets skidset adds */
     char cmd[DRV_MODE_MAX + 16];
     char disk[12];
     char help[DRV_BLK_HELP_MAX + 1];
@@ -377,14 +377,53 @@ static void hide_missing(struct drv_tab *t, struct drv_opt *opt)
     }
 }
 
+/* A default has to be a row somebody could have chosen.
+ *
+ * hide_missing takes a row off the menu when the file behind it is gone, and
+ * the table's configured fallback is not exempt from that. Measured on a stock
+ * table with PC15.DRV renamed away and no SETUP.DAT: rows 0 and 1 both need
+ * that driver, both were hidden, the fallback stayed at 1, and an immediate
+ * Exit wrote "load.exe /u MCGA  /spc" into SETUP.DAT. The program had just
+ * decided that row could not work and then wrote it out as the answer.
+ *
+ * So the fallback moves to the first row still on the menu, in menu order,
+ * which is the order the screen would have offered them in.
+ *
+ * Only the default moves. A SETUP.DAT that already names a hidden row keeps
+ * that index when it is read back: the row is still in the table, so the file
+ * still means what it meant, and somebody else's setting is not ours to
+ * change. This is about what to write when there is nothing to read. */
+static void offered_fallback(struct drv_tab *t, struct drv_opt *opt)
+{
+    int i;
+
+    for (i = 0; i < t->n; i++) {
+        if (opt[i].index == t->fallback && opt[i].label != NULL &&
+            !opt[i].hidden) {
+            return;
+        }
+    }
+    for (i = 0; i < t->n; i++) {
+        if (opt[i].label != NULL && !opt[i].hidden) {
+            t->fallback = opt[i].index;
+            return;
+        }
+    }
+    /* Nothing is offered at all, which hide_missing does not produce: it hides
+     * nothing rather than empty a menu. Leaving the fallback alone is all there
+     * is to do, and the game will say what is wrong. */
+}
+
 void drv_scan_finish(void)
 {
     ensure();
     if (grow_sound) {
         hide_missing(&stab, sopt);
+        offered_fallback(&stab, sopt);
     }
     if (grow_video) {
         hide_missing(&vtab, vopt);
+        offered_fallback(&vtab, vopt);
     }
 }
 
@@ -492,7 +531,7 @@ static long block_of(const char *path, char *out, int outmax, long from)
      * file, which is where a linker puts a trailing string constant and where
      * SC15.DRV's is. A short read because the disk failed is not, and handing
      * the parser half a block would get it refused for a syntax error it does
-     * not have, or accepted if the half happened to end after SKIDCFGEND. */
+     * not have, or accepted if the half happened to end after SKIDSETEND. */
     if (ferror(f)) {
         fclose(f);
         return BLOCK_BAD;
@@ -549,11 +588,11 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
 
             (*over)++;
             for (j = 1; j < n; j++) {
-                if (strcmp(names[j], names[worst]) > 0) {
+                if (sk_name_cmp(names[j], names[worst]) > 0) {
                     worst = j;
                 }
             }
-            if (strcmp(f.name, names[worst]) < 0) {
+            if (sk_name_cmp(f.name, names[worst]) < 0) {
                 strncpy(names[worst], f.name, SK_NAME_MAX - 1);
                 names[worst][SK_NAME_MAX - 1] = '\0';
             }
@@ -583,7 +622,7 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
         char tmp[SK_NAME_MAX];
 
         strcpy(tmp, names[i]);
-        for (j = i; j > 0 && strcmp(names[j - 1], tmp) > 0; j--) {
+        for (j = i; j > 0 && sk_name_cmp(names[j - 1], tmp) > 0; j--) {
             strcpy(names[j], names[j - 1]);
         }
         strcpy(names[j], tmp);

@@ -2,7 +2,7 @@
  *
  *     SNAP out.txt program.exe
  *
- * This is the instrument the screen was compared with. skidcfg draws the way
+ * This is the instrument the screen was compared with. skidset draws the way
  * SETUP.EXE draws, entirely through BIOS calls, and a screen drawn that way
  * cannot be captured by redirecting DOS output: there is nothing on stdout to
  * redirect. DOSBox's Ctrl+F5 is no use either, because it is a host key and
@@ -23,7 +23,7 @@
  * ------------------------------------------------------------------ building
  *
  * Not built by MSCBUILD.BAT and not built by CI, because it is DOS only and it
- * is an instrument rather than part of the program. Build it beside skidcfg
+ * is an instrument rather than part of the program. Build it beside skidset
  * with the same explicit library list, which is not optional; see MSCBUILD.BAT
  * for why:
  *
@@ -42,7 +42,7 @@
  *     autotype -w 3 -p 0.4 f1 space enter esc down f1 space enter esc esc
  *     SNAP L:\ORIG.TXT C:\SETUP.EXE
  *     autotype -w 3 -p 0.4 f1 space enter esc down f1 space enter esc esc
- *     SNAP L:\NEW.TXT C:\SKIDCFG.EXE
+ *     SNAP L:\NEW.TXT C:\SKIDSET.EXE
  *
  * The dump is one line per screen row: the characters between bars, then both
  * nibbles of each cell's attribute as hex, so that a diff shows what moved and

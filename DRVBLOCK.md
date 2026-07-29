@@ -1,10 +1,10 @@
 # Driver block specification
 
-Version 1. Magic `SKIDCFGDRV01`.
+Version 1. Magic `SKIDSETDRV01`.
 
-A driver describes itself to `skidcfg` by carrying a block of text inside
-its own binary. `skidcfg` scans the game directory, reads the blocks and
-adds a menu row for each. No rebuild of `skidcfg`, no file beside the
+A driver describes itself to `skidset` by carrying a block of text inside
+its own binary. `skidset` scans the game directory, reads the blocks and
+adds a menu row for each. No rebuild of `skidset`, no file beside the
 driver.
 
 A row exists only while its driver file is on the disk. A `SETUP.DAT`
@@ -15,28 +15,28 @@ naming a driver that is not there stops the game: `LOAD.EXE` prints
 ## 1. Example
 
 ```
-SKIDCFGDRV01
+SKIDSETDRV01
 sound
-label Roland SC-55
-brief SC-55
+label Roland Sound Canvas
+brief Sound Canvas
 help Select if you have a Roland Sound Canvas on the MPU-401 port.
-help It uses the GS sound set, which a General MIDI module does not have.
-SKIDCFGEND
+help Requires an SC-55 or compatible.
+SKIDSETEND
 ```
 
-Complete and valid for `SC15.DRV`.
+Complete and valid, and the block `SC15.DRV` ships.
 
 
 ## 2. Grammar
 
 ```
-block   = "SKIDCFGDRV01" LF *line "SKIDCFGEND" LF
+block   = "SKIDSETDRV01" LF *line "SKIDSETEND" LF
 line    = entry / comment / blank
 entry   = key [ SP value ] LF
 comment = *SP ";" *CHAR LF
 ```
 
-- `SKIDCFGDRV01` and `SKIDCFGEND` each occupy a whole line. Nothing may
+- `SKIDSETDRV01` and `SKIDSETEND` each occupy a whole line. Nothing may
   follow either on its line.
 - Bytes before the magic are not examined, so a block may be appended to a
   finished binary.
@@ -63,7 +63,7 @@ block, terminator included:
 
 ```
 help The sound and video label on this card
-help needs no help; brief mode disk SKIDCFGEND
+help needs no help; brief mode disk SKIDSETEND
 ```
 
 A line whose first non-blank character is `;` is a comment. There is no
@@ -95,14 +95,15 @@ submenu is shut:
 
 ```
    Video display                                 (MCGA)
-   Sound option                                 (SC-55)
+   Sound option                          (Sound Canvas)
 ```
 
-Write `brief` bare. `skidcfg` adds the brackets, so `SC-55` gives
-`(SC-55)`, and a `brief` containing a bracket is refused rather than
+Write `brief` bare. `skidset` adds the brackets, so `Sound Canvas` gives
+`(Sound Canvas)`, and a `brief` containing a bracket is refused rather than
 doubled. There is no default. The stock rows are the house style, shortest
 name still unambiguous: `No sound`, `PC speaker`, `Tandy`, `Ad Lib`,
-`Sound Blaster`, `MT-32`.
+`Sound Blaster`, `MT-32`. Note what that costs the manufacturer rather than
+the model: `Roland MT-32` shows as `(MT-32)`.
 
 ### 3.2 help
 
@@ -156,7 +157,7 @@ What the parser will hold, so a block cannot make it read past anything:
 | lines in the block | 64 |
 | `help` keys, before joining | 32 |
 
-A block that runs past 2048 bytes with no `SKIDCFGEND` is not a block.
+A block that runs past 2048 bytes with no `SKIDSETEND` is not a block.
 
 Each menu holds ten rows, a window growing one row per entry until its
 shadow has to clear the footer. Six sound rows and five video modes are
@@ -166,24 +167,25 @@ eleventh is refused and named rather than dropped off the screen.
 
 ## 5. Where blocks are found
 
-`skidcfg` reads, in the current directory:
+`skidset` reads, in the current directory:
 
 - every `*.DRV`, where a block describes a sound driver
 - `LOAD.EXE`, where a block describes a video mode
 
 It opens nothing else, and the only file it writes is `SETUP.DAT`.
 
-The scan is 8.3 names and nothing else. A driver's switch is two characters of
-its filename, so a name that does not fit 8.3 cannot be a driver identity at
-all. On a host that allows longer names such a file is passed over silently
-rather than listed as skipped: it was never a candidate to begin with.
+The scan is 8.3 names and nothing else. A driver's switch is two characters
+of its filename, so a name that does not fit 8.3 cannot be a driver identity
+at all. On a host that allows longer names such a file is passed over
+silently rather than listed as skipped: it was never a candidate to begin
+with.
 
 A block may sit anywhere in the file. The whole image is searched in
 overlapping reads, so a magic across a read boundary is still found. No
 required offset, no header, no pointer table.
 
 Every block in a file is read, in order. The search for the next begins
-past the previous `SKIDCFGEND`, so a block may quote the magic in a
+past the previous `SKIDSETEND`, so a block may quote the magic in a
 comment. Ten blocks in one file is where it stops looking, and it says so.
 
 The four drivers Stunts 1.1 ships carry no block. Their six sound rows are
@@ -201,7 +203,7 @@ Adding a mode means patching `LOAD.EXE`, which is therefore the only
 binary that can honestly describe one, and is why `mode` is required:
 there is no filename to derive it from.
 
-`skidcfg` derives `NAME` from `mode` and takes the row off the menu when
+`skidset` derives `NAME` from `mode` and takes the row off the menu when
 `NAME.COD` or `NAME.HDR` is missing. Without that the game stops with
 `Unable to size NAME.hdr.`
 
@@ -211,14 +213,14 @@ there is no filename to derive it from.
 ### 6.1 The command line switch
 
 `LOAD.EXE` derives the driver's filename from the switch: `/sxx` loads
-`XX15.DRV`. The switch is the filename, and `skidcfg` works it out. Two
+`XX15.DRV`. The switch is the filename, and `skidset` works it out. Two
 drivers cannot propose the same switch, because two files cannot share a
 name in one directory.
 
 - Exactly two characters. `LOAD.EXE` reads two after `/s` and discards the
   rest, so `/sscsb` does not fail: it loads `SC15.DRV` while looking like
   it asks for something else. A driver named `SCSB15.DRV` can never be
-  reached, so `skidcfg` refuses to put one on a menu and says why.
+  reached, so `skidset` refuses to put one on a menu and says why.
 - Either character may be a letter or a digit, in any order. `M015.DRV`,
   `0415.DRV`, `4X15.DRV`, `7E15.DRV` and `X415.DRV` all answer to their
   own switch. Two characters is the whole namespace, so a scheme that
@@ -244,21 +246,21 @@ description.
 
 ### 6.2 The menu index
 
-`skidcfg` allocates the number it writes to line 1 of `SETUP.DAT`, in a
+`skidset` allocates the number it writes to line 1 of `SETUP.DAT`, in a
 fixed order, starting above the stock rows.
 
 Line 1 does not identify a driver. Line 2 does: it is the command line the
-game obeys, and `skidcfg` matches on that string. Line 1 is a hint used
-only when line 2 cannot be read, and `skidcfg` says so when it falls back
+game obeys, and `skidset` matches on that string. Line 1 is a hint used
+only when line 2 cannot be read, and `skidset` says so when it falls back
 to it. Sound 0 to 5 and video 0 to 4 stay nailed to the stock rows for
 ever, so a `SETUP.DAT` written by the original `SETUP.EXE` in 1991 still
 means what it meant.
 
 ### 6.3 The rest of SETUP.DAT, and the help window
 
-`skidcfg` builds line 2 from the video and sound fragments with the
+`skidset` builds line 2 from the video and sound fragments with the
 spacing the game expects, and line 4 from `disk`. The `help` text is one
-paragraph: `skidcfg` wraps it to the window and takes the window's height
+paragraph: `skidset` wraps it to the window and takes the window's height
 from how many lines that came to.
 
 ### 6.4 A second sound device
@@ -277,12 +279,12 @@ gives the job to.
 ## 7. Versioning
 
 Additive change: an unknown key is ignored, so a later version may add an
-optional key and a driver carrying it still works with every `skidcfg`
+optional key and a driver carrying it still works with every `skidset`
 released before. This is why there are no reserved bytes. A text format
 extends by gaining a word.
 
 Breaking change: a new meaning for an existing key, or a different rule
-for an existing value, takes `SKIDCFGDRV02`. An older `skidcfg` does not
+for an existing value, takes `SKIDSETDRV02`. An older `skidset` does not
 recognise the magic, skips the block whole, and the row does not appear. A
 driver missing from a menu is recoverable; a driver described wrongly on
 one is not.
@@ -297,16 +299,16 @@ A misspelt required key is refused for that key being missing. A misspelt
 ## 8. Diagnostics
 
 A block that is malformed, exceeds a limit, or has nowhere left on the
-menu is skipped, and `skidcfg` names the file and the reason. Nothing is
+menu is skipped, and `skidset` names the file and the reason. Nothing is
 silent.
 
-`SKIDCFG /D` prints the merged table and exits without opening the setup
+`SKIDSET /D` prints the merged table and exits without opening the setup
 screen. The only other symptom of a bad block is a row that is not there,
-which looks identical whether `skidcfg` never opened the file, found no
+which looks identical whether `skidset` never opened the file, found no
 block in it, or read a block and refused it.
 
 ```
-C:\STUNTS>SKIDCFG /D
+C:\STUNTS>SKIDSET /D
 
 Sound
    0  /spc /ns  built in  No music or sound effects (No sound)
@@ -315,7 +317,7 @@ Sound
    3  /sad      built in  Ad Lib card (Ad Lib)
    4  /ssb      built in  Sound Blaster card (Sound Blaster)
    5  /smt      built in  Roland MT-32 (MT-32)
-   6  /ssc      SC15.DRV  Roland SC-55 (SC-55)
+   6  /ssc      SC15.DRV  Roland Sound Canvas (Sound Canvas)
 
 Video
    0  CGA       built in  CGA graphics (CGA)
@@ -326,19 +328,19 @@ Video
 
 Skipped
    XY15.DRV  label is 34 characters, the limit is 31
-   QZ15.DRV  no SKIDCFGEND in the first 2048 bytes
+   QZ15.DRV  no SKIDSETEND in the first 2048 bytes
 ```
 
-Columns: the index `skidcfg` allocated, the switch it derived from the
+Columns: the index `skidset` allocated, the switch it derived from the
 filename, the file the row came from, and both names as they will be
-drawn, `label` with `brief` in the brackets `skidcfg` adds. `Skipped`
+drawn, `label` with `brief` in the brackets `skidset` adds. `Skipped`
 gives a file and a reason for every block read and not used.
 
 
 ## 9. Driver size
 
 Adding a block makes the driver file bigger, which is a change to the game
-and not only to `skidcfg`. One of the four stock drivers does not tolerate
+and not only to `skidset`. One of the four stock drivers does not tolerate
 it.
 
 `PC15.DRV`, the PC speaker driver, is 2227 bytes. Grown past roughly 2400
@@ -371,7 +373,7 @@ matters, so a run of zeros of the right length stands in for a real block.
 
 `SC15.DRV` is built with TASM and wlink as `format dos com`, and its block
 is a string constant placed by the build rather than appended to a
-finished binary. The block is the last thing in the file, so `SKIDCFGEND`
+finished binary. The block is the last thing in the file, so `SKIDSETEND`
 and its newline are the driver's final bytes. A scanner that expects bytes
 after the terminator passes every hand-written fixture and fails on the
 real thing.
@@ -379,7 +381,7 @@ real thing.
 
 ## 11. Out of scope
 
-How a Stunts driver works inside. `skidcfg` derives the switch from the
+How a Stunts driver works inside. `skidset` derives the switch from the
 filename, reads the block, and executes nothing, so a block is all it
 takes to appear on a menu and nothing here says what the game will then
 call.
@@ -387,5 +389,5 @@ call.
 [UnifiedMT15](https://github.com/LowLevelMahn/UnifiedMT15) by LowLevelMahn
 is an independent reverse engineering of `MT15.DRV` in C, and the best
 public account of the slot layout and calling conventions a driver has to
-satisfy. It is a reference, not a dependency: nothing in `skidcfg` derives
+satisfy. It is a reference, not a dependency: nothing in `skidset` derives
 from it.

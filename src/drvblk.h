@@ -5,12 +5,12 @@
  * rebuilding this one. DRVBLOCK.md is the format and the reasoning; this is
  * the half that reads it.
  *
- *     SKIDCFGDRV01
+ *     SKIDSETDRV01
  *     sound
  *     label Roland SC-55
  *     brief SC-55
  *     help Select if you have a Roland Sound Canvas on the MPU-401 port.
- *     SKIDCFGEND
+ *     SKIDSETEND
  *
  * Nothing here touches a file or a screen. It takes the bytes and gives back
  * a filled struct or the reason it would not, which is what lets the whole of
@@ -39,13 +39,13 @@
  * Two digits rather than one, and not because one would run out: the magic is a
  * string and versions here are identities rather than numbers, so a reader
  * matches the whole thing or skips, and nothing ever compares two of them. It
- * is for reading. In a hex dump SKIDCFGDRV1 leaves you wondering whether the 1
+ * is for reading. In a hex dump SKIDSETDRV1 leaves you wondering whether the 1
  * is a version or the tail of a name, and 01 beside a later 02 does not. */
-#define DRV_BLK_MAGIC "SKIDCFGDRV01"
-#define DRV_BLK_END "SKIDCFGEND"
+#define DRV_BLK_MAGIC "SKIDSETDRV01"
+#define DRV_BLK_END "SKIDSETEND"
 
 /* Bounds on what a block may contain. The first four are the screen's and are
- * derived in src/skidcfg.c; the rest exist so that no block can walk the
+ * derived in src/skidset.c; the rest exist so that no block can walk the
  * parser off the end of anything. */
 #define DRV_LABEL_SOUND_MAX 31 /* sound submenu, text columns 12 to 42 */
 #define DRV_LABEL_VIDEO_MAX 24 /* video submenu, text columns 14 to 37 */

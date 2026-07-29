@@ -2,8 +2,8 @@
  *
  * Edit this and nothing else. Entries can be added, removed and reordered
  * here, and the menus, the counts, the SETUP.DAT reader and the SETUP.DAT
- * writer all follow. One entry, the Roland SC-55 at the bottom, is here
- * already and switched off; test/drvmin.h is a cut down one.
+ * writer all follow. One entry at the bottom is an example of an added row and
+ * is switched off; test/drvmin.h is a cut down table.
  *
  * ------------------------------------------------------------------ the rows
  *
@@ -86,9 +86,11 @@
 #    define DRV_VIDEO_FALLBACK 4
 #endif
 #ifndef DRV_SOUND_FALLBACK
-#    ifdef SKIDCFG_SC55
-/* A build that ships the SC-55 driver is running on a machine that has the
- * card, so that is the better first run answer than the speaker. */
+#    ifdef SKIDSET_EXTRA
+/* A build that went to the trouble of adding a row presumably ships whatever
+ * that row needs, so the added row is the better first run answer than the
+ * speaker. The mechanism is the point here rather than the number: a build can
+ * move the fallback, and this is where it says so. */
 #        define DRV_SOUND_FALLBACK 6
 #    else
 #        define DRV_SOUND_FALLBACK 1
@@ -196,41 +198,38 @@ DRV_SOUND(5, "/smt ", "MT15.DRV", "(MT-32)", "Roland MT-32",
           "Roland MT-32 support in\n"
           "your PC.")
 
-/* The Roland SC-55, which the game never heard of and skidsc55 supplies.
+/* An example of a row added to this table, and nothing more than that.
  *
- *     make EXTRA=-DSKIDCFG_SC55
- *     set EXTRA=/DSKIDCFG_SC55        before MSCBUILD.BAT
+ *     make EXTRA=-DSKIDSET_EXTRA
+ *     set EXTRA=/DSKIDSET_EXTRA        before MSCBUILD.BAT
  *
- * Off unless asked for, because the entry is only usable with SC15.DRV and the
- * SC prefixed voice banks beside the game, and offering a driver whose files
- * are not there gets you a game that will not start. Every other row can be
- * offered unconditionally because a retail release ships the files for all of
- * them.
+ * ZZ15.DRV does not exist. The row is here so that a build with a driver added
+ * can be compiled and checked, which is what make selfcheck-extra does, and so
+ * that anyone adding a real one has the shape in front of them: index above the
+ * reserved range, a two character prefix LOAD.EXE will turn into a filename, a
+ * needs the row is hidden without, and a paragraph inside 26 columns by 15.
+ *
+ * It is deliberately not a real driver. A real one describes itself from inside
+ * its own binary, which is DRVBLOCK.md, and that is the better mechanism for
+ * every reason this file gives: the row appears when the file does, goes when
+ * it goes, and nobody rebuilds anything. A row compiled in here for a driver
+ * that also carries a block is worse than redundant, because the two disagree
+ * about the driver's name and which one you see depends on how skidset was
+ * built. What this table is for is the six rows the game shipped, which are
+ * the ones no file could describe.
  *
  * The switch is here, in the table, rather than anywhere else. That is the same
  * rule the rest of this file follows: what drivers exist is decided in one
  * place, and a build that wants a different answer edits or defines against
- * this file and nothing else.
- *
- * Index 6 because no shipped entry claims it. The two characters after /s are
- * the driver name prefix LOAD.EXE uses, so /ssc reaches SC15.DRV. The
- * paragraph is ours: the original has nothing to say about a card it never
- * heard of, and there is no record to transcribe.
- *
- * It says Sound Canvas and not General MIDI on purpose. SC15.DRV drives the GS
- * sound set, which is Roland's superset of General MIDI, so a GM module that
- * is not a Sound Canvas answers the notes with the wrong instruments rather
- * than not at all. That is a worse failure than silence, because it plays, and
- * a help paragraph that implies any GM module will do would be the thing that
- * caused it. */
-#ifdef SKIDCFG_SC55
-DRV_SOUND(6, "/ssc ", "SC15.DRV", "(SC-55)", "Roland SC-55",
-          "Select if you have a\n"
-          "Roland Sound Canvas on\n"
-          "the MPU-401 port. It\n"
-          "uses the GS sound set,\n"
-          "which a General MIDI\n"
-          "module does not have.")
+ * this file and nothing else. */
+#ifdef SKIDSET_EXTRA
+DRV_SOUND(6, "/szz ", "ZZ15.DRV", "(Example)", "Example driver",
+          "An example of a row\n"
+          "added to the table in\n"
+          "src/drvtab.h. A real\n"
+          "driver describes itself\n"
+          "instead; see\n"
+          "DRVBLOCK.md.")
 #endif
 
 #undef DRV_VIDEO
