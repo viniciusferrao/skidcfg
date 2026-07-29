@@ -34,6 +34,7 @@
 #include "drvblk.h"
 #include "drvscan.h"
 #include "install.h"
+#include "skidcfg.h"
 #include "setup.h"
 
 /* For DRV_TABLE_STOCK and nothing else. With neither row macro defined this
@@ -52,11 +53,6 @@
 /* The same test src/drvscan.c makes, for the same reason: one check here reads
  * a directory, and reading a directory is DOS. Everything else in this file
  * runs anywhere. */
-#if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-#    define ON_DOS 1
-#    include <dos.h>
-#endif
-
 #define DATMAX 256
 
 static const char *DAT = "SCTEST.DAT";
@@ -133,17 +129,6 @@ static int write_text(const char *path, const char *s)
     }
     fputs(s, f);
     return fclose(f) != 0;
-}
-
-static int file_exists(const char *path)
-{
-    FILE *f = fopen(path, "rb");
-
-    if (f == NULL) {
-        return 0;
-    }
-    fclose(f);
-    return 1;
 }
 
 #ifdef DRV_TABLE_STOCK
@@ -500,7 +485,7 @@ static void check_file(void)
     s.sound = 900;
     expect("an index that is not in the table is refused",
            setup_write(&s, DAT) != 0, 1);
-    expect("and leaves no file behind", file_exists(DAT), 0);
+    expect("and leaves no file behind", sk_file_present(DAT), 0);
 
     /* The file is built under another name and moved into place, so that a
      * disk that fills up cannot leave the game with half a SETUP.DAT. What
@@ -509,12 +494,13 @@ static void check_file(void)
     setup_default(&s);
     expect("a file can be written where there was none", setup_write(&s, DAT),
            0);
-    expect("and no scratch file is left beside it", file_exists(TMP_NEW), 0);
-    expect("nor the other one", file_exists(TMP_OLD), 0);
+    expect("and no scratch file is left beside it", sk_file_present(TMP_NEW),
+           0);
+    expect("nor the other one", sk_file_present(TMP_OLD), 0);
     expect("writing over one already there works too", setup_write(&s, DAT), 0);
     expect("and still leaves neither",
-           file_exists(TMP_NEW) || file_exists(TMP_OLD), 0);
-    expect("while the file itself is there", file_exists(DAT), 1);
+           sk_file_present(TMP_NEW) || sk_file_present(TMP_OLD), 0);
+    expect("while the file itself is there", sk_file_present(DAT), 1);
 
     /* Neither scratch name is written over, whatever is under it. A machine
      * switched off mid-replacement leaves one of them behind holding the only
@@ -1457,7 +1443,7 @@ static void check_merge(void)
  * So the carrier here is deliberately larger than 32 KB with the blocks past
  * the mark, and this check exists to be run by the 16-bit build.
  */
-#ifdef ON_DOS
+#ifdef SK_SCREEN
 
 static const char VBLOCK1[] = "SKIDCFGDRV01\n"
                               "; a comment quoting SKIDCFGDRV01 at it\n"
@@ -1647,7 +1633,7 @@ static void check_directory(void)
     drv_scan_reset();
 }
 
-#endif /* ON_DOS */
+#endif /* SK_SCREEN */
 
 /* ------------------------------------------------- drivers that are not there
  *
@@ -1865,27 +1851,27 @@ static const char *in_the_way(void)
     const struct drv_tab *t;
     int                   i;
 
-#ifdef ON_DOS
+#ifdef SK_SCREEN
     {
-        /* On DOS the scan checks read the directory, so the checks that feed
-         * them write drivers into it: three dozen of them, named after nothing
-         * in particular. Listing each would be a list nobody maintains, and a
-         * directory holding any .DRV at all is one this has no business
-         * writing into. Stronger than the table below and it costs a
-         * findfirst. */
-        struct find_t f;
+        /* Where the directory can be read, the scan checks write drivers into
+         * it: three dozen of them, named after nothing in particular. Listing
+         * each would be a list nobody maintains, and a directory holding any
+         * .DRV at all is one this has no business writing into. Stronger than
+         * the table below and it costs one directory call. */
+        static char    found[SK_NAME_MAX];
+        struct sk_find f;
 
-        if (_dos_findfirst("*.DRV", _A_NORMAL, &f) == 0) {
-            static char found[16];
-
+        if (sk_find_first(&f, "*.DRV")) {
             strncpy(found, f.name, sizeof found - 1);
             found[sizeof found - 1] = '\0';
+            sk_find_done(&f);
             return found;
         }
+        sk_find_done(&f);
     }
 #endif
     for (i = 0; i < (int)(sizeof SCRATCH / sizeof SCRATCH[0]); i++) {
-        if (file_exists(SCRATCH[i])) {
+        if (sk_file_present(SCRATCH[i])) {
             return SCRATCH[i];
         }
     }
@@ -1894,13 +1880,13 @@ static const char *in_the_way(void)
      * the scanner rather than from drvtab.h. Neither call touches a file. */
     t = drv_scan_sound();
     for (i = 0; i < t->n; i++) {
-        if (t->opt[i].needs != NULL && file_exists(t->opt[i].needs)) {
+        if (t->opt[i].needs != NULL && sk_file_present(t->opt[i].needs)) {
             return t->opt[i].needs;
         }
     }
     t = drv_scan_video();
     for (i = 0; i < t->n; i++) {
-        if (t->opt[i].needs != NULL && file_exists(t->opt[i].needs)) {
+        if (t->opt[i].needs != NULL && sk_file_present(t->opt[i].needs)) {
             return t->opt[i].needs;
         }
     }
@@ -1927,7 +1913,7 @@ int main(void)
     check_block();
     check_merge();
     check_install();
-#ifdef ON_DOS
+#ifdef SK_SCREEN
     check_scan();
     check_directory();
 #endif

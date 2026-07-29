@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "install.h"
+#include "skidcfg.h"
 #include "version.h"
 
 #define SETUP_EXE "SETUP.EXE"
@@ -25,17 +26,6 @@ static const char MARK[] = SKIDCFG_MARK;
  * stack MSC 5.10 links with. It is static rather than automatic for that
  * reason. */
 static char buf[8192];
-
-static int exists(const char *path)
-{
-    FILE *f = fopen(path, "rb");
-
-    if (f == NULL) {
-        return 0;
-    }
-    fclose(f);
-    return 1;
-}
 
 /* Whether a file has the marker in it. Read in overlapping blocks, because a
  * marker lying across a block boundary is the one way a whole file scan can
@@ -115,8 +105,8 @@ static int copy_file(const char *from, const char *to)
 
 enum inst_state inst_state(void)
 {
-    int have_exe = exists(SETUP_EXE);
-    int have_org = exists(SETUP_ORG);
+    int have_exe = sk_file_present(SETUP_EXE);
+    int have_org = sk_file_present(SETUP_ORG);
 
     if (!have_exe && !have_org) {
         return INST_ABSENT;
@@ -174,7 +164,7 @@ int inst_install(const char *self)
         break;
     }
 
-    if (self == NULL || !exists(self)) {
+    if (self == NULL || !sk_file_present(self)) {
         printf("Cannot find this program's own file to copy. DOS 3.0 and\n"
                "later pass it on the command line; older ones do not, and\n"
                "there it has to be copied over %s by hand.\n",

@@ -32,14 +32,11 @@
 #include "mainhlp.h"
 #include "scrn.h"
 #include "setup.h"
+#include "skidcfg.h"
 #include "version.h"
 
-#if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-#    define SKIDCFG_DOS 1
-#endif
-
-#ifdef SKIDCFG_DOS
-#    include <conio.h>
+#ifdef SK_SCREEN
+#    include <conio.h> /* getch, which Windows spells the same way */
 #endif
 
 #define SETUP_PATH "SETUP.DAT"
@@ -51,6 +48,15 @@
 #define MAIN_EXIT 3
 
 enum key { KEY_NONE, KEY_UP, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_HELP };
+
+/* What getch gives back. An extended key arrives as a zero or E0h and then the
+ * scan code, which is the same on DOS and on a Windows console. */
+#define KEY_EXTENDED_A 0x00
+#define KEY_EXTENDED_B 0xE0
+#define SCAN_UP 0x48
+#define SCAN_DOWN 0x50
+#define SCAN_F1 0x3B
+#define ASCII_ESC 0x1B
 
 /* --------------------------------------------------------------- screen --
  *
@@ -124,32 +130,33 @@ static const char TITLE_3[] = SKIDCFG_TITLE_AUTHOR;
 
 /* ------------------------------------------------------------- keyboard -- */
 
-#ifdef SKIDCFG_DOS
+#ifdef SK_SCREEN
 
 static int key_get(void)
 {
     int c = getch();
 
-    if (c == 0 || c == 0xE0) { /* extended: zero, then the scan code */
-        c = getch();
-        if (c == 0x48) {
+    if (c == KEY_EXTENDED_A || c == KEY_EXTENDED_B) {
+        switch (getch()) {
+        case SCAN_UP:
             return KEY_UP;
-        }
-        if (c == 0x50) {
+        case SCAN_DOWN:
             return KEY_DOWN;
-        }
-        if (c == 0x3B) {
+        case SCAN_F1:
             return KEY_HELP;
+        default:
+            return KEY_NONE;
         }
+    }
+    switch (c) {
+    case '\r':
+    case '\n':
+        return KEY_ENTER;
+    case ASCII_ESC:
+        return KEY_ESC;
+    default:
         return KEY_NONE;
     }
-    if (c == '\r' || c == '\n') {
-        return KEY_ENTER;
-    }
-    if (c == 0x1B) {
-        return KEY_ESC;
-    }
-    return KEY_NONE;
 }
 
 #else
@@ -165,7 +172,7 @@ static int key_get(void)
     if (fgets(buf, (int)sizeof buf, stdin) == NULL) {
         return KEY_ESC;
     }
-    if (buf[0] == 0x1B && buf[1] == '[') {
+    if (buf[0] == ASCII_ESC && buf[1] == '[') {
         if (buf[2] == 'A') {
             return KEY_UP;
         }
@@ -189,7 +196,7 @@ static int key_get(void)
         return KEY_HELP;
     case 'q':
     case 'Q':
-    case 0x1B:
+    case ASCII_ESC:
         return KEY_ESC;
     default:
         return KEY_NONE;
@@ -596,7 +603,7 @@ static int option(int argc, char **argv)
      * game directory holding an executable the machine cannot run, under the
      * name of the one it could. Refused before anything is renamed. */
     if (opt_is(a, "INSTALL") || opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
-#ifdef SKIDCFG_DOS
+#ifdef SK_SCREEN
         if (opt_is(a, "INSTALL")) {
             return inst_install(argv[0]);
         }

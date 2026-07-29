@@ -71,6 +71,14 @@ BEGIN { WIDTH = 78; para = ""; pfx1 = ""; pfx2 = ""; intable = 0 }
 /^```/          { flush_para(); incode = !incode; next }
 incode          { print; next }
 
+# An image goes entirely. A DOS text file cannot show one, and the alternative
+# is the alt text stranded on a line of its own with a leading exclamation
+# mark, which reads as a mistake rather than as a missing picture. The address
+# is dropped with it, unlike a link's, because there is nothing at the other
+# end for a reader without a browser. A caption belongs in the prose.
+/^!\[/          { flush_para(); inimage = 1 }
+inimage         { if (/\)[ \t]*$/) inimage = 0; next }
+
 # an indented block is already laid out; pass it through
 /^    /         { flush_para(); print; next }
 

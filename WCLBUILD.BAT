@@ -13,7 +13,14 @@ rem CI knows about, which is the thing worth avoiding: this file is here in the
 rem tree, README.md names it, and it builds the same sources with no #ifdef of
 rem its own.
 rem
-rem   WCLBUILD          SKIDCFG.EXE and SKIDCHK.EXE
+rem   WCLBUILD          SKIDCFG.EXE and SKIDCHK.EXE, 16-bit, 8086
+rem   WCLBUILD 386      SKIDCF32.EXE and SKIDCK32.EXE, 32-bit, DOS/32A bound in
+rem
+rem The 16-bit binary is the one every machine the game runs on can load, and
+rem is what a release leads with. The 32-bit one wants a 386 and carries the
+rem extender, and it is also a second opinion on the sources: int is 32 bits
+rem there, so code that assumed the 16-bit width stops compiling rather than
+rem going quietly wrong. src/scrn.c is the only file that knows the difference.
 rem
 rem Set WATCOM to your installation before running, or edit the default here.
 
@@ -41,13 +48,22 @@ echo This installation has tools but no headers.
 goto badenv
 :haveinc
 
-set PATH=%WCLBIN%;%PATH%
+rem BINW is on the path for both hosts, because the 32-bit link binds the
+rem extender and wlink looks for DOS32A.EXE along PATH. It ships in BINW only.
+set PATH=%WCLBIN%;%WATCOM%\BINW;%PATH%
 set INCLUDE=%WATCOM%\H
 
 rem wcl expands a wildcard itself but hands wcc the bare file name, so
 rem "wcl src\*.c" compiles the first file and then cannot find the second.
 rem Building from inside src is what works; -fe puts the executable back up top.
 cd src
+
+if "%1"=="386" goto build386
+if "%1"=="32" goto build386
+if "%1"=="WIN32" goto win32
+if "%1"=="win32" goto win32
+if "%1"=="NT" goto win32
+if "%1"=="nt" goto win32
 
 rem -ml is the large model, matching DOSBUILD.BAT, and -0 keeps the output on
 rem the 8086 the game ran on.
@@ -77,7 +93,7 @@ rem One physical line, however long it looks. The caret is cmd.exe's line
 rem continuation and COMMAND.COM has no such thing: it reads a batch file one
 rem line at a time, so the caret would go to WCL as an argument and the next
 rem line would be run as a command. This is 119 characters and DOS allows 128.
-wcl -bt=dos -ml -0 -w3 -k8192 -i=. ..\test\selfchk.c drivers.c drvblk.c drvscan.c setup.c install.c -fe=..\SKIDCHK.EXE
+wcl -bt=dos -ml -0 -w3 -k8192 -i=. ..\test\selfchk.c drivers.c drvblk.c drvscan.c setup.c install.c util.c -fe=..\SKIDCHK.EXE
 if errorlevel 1 goto fail
 del *.obj
 cd ..
@@ -85,6 +101,33 @@ cd ..
 echo.
 echo Built SKIDCFG.EXE and SKIDCHK.EXE. Check the build with:
 echo     SKIDCHK
+if "%OS%"=="Windows_NT" exit /b 0
+goto end
+
+rem The 32-bit build. -3s is 386 instructions with the stack calling
+rem convention, matching the 16-bit build's plain register set rather than
+rem Watcom's own; -l=dos32a binds the extender into the executable so there is
+rem one file to ship and nothing to install.
+rem
+rem No -k here. The extender gives the program a flat stack of its own and the
+rem 2 KB DOS default does not apply, which is the one place this target is less
+rem fussy than the other.
+:build386
+wcl386 -bt=dos -l=dos32a -w3 *.c -fe=..\SKIDCF32.EXE
+if errorlevel 1 goto fail
+del *.obj
+if exist __wcl__.lnk del __wcl__.lnk
+
+rem One physical line, for the reason the 16-bit self-check line gives.
+wcl386 -bt=dos -l=dos32a -w3 -i=. ..\test\selfchk.c drivers.c drvblk.c drvscan.c setup.c install.c util.c -fe=..\SKIDCK32.EXE
+if errorlevel 1 goto fail
+del *.obj
+if exist __wcl__.lnk del __wcl__.lnk
+cd ..
+
+echo.
+echo Built SKIDCF32.EXE and SKIDCK32.EXE. Check the build with:
+echo     SKIDCK32
 if "%OS%"=="Windows_NT" exit /b 0
 goto end
 
@@ -108,3 +151,30 @@ goto end
 if "%OS%"=="Windows_NT" exit /b 1
 
 :end
+
+rem The Windows console build. -bt=nt and nothing else: src/scrn.c draws the
+rem same screen through the console API, whose attribute word has the same bits
+rem in the same places as the BIOS one, and getch is spelled the same way. So
+rem this is the program rather than a compile-only target.
+rem
+rem No -l: a Win32 executable needs no extender.
+:win32
+rem The NT headers are a directory below the common ones, and windows.h is
+rem only there. wcl386 -bt=nt does not add it to INCLUDE by itself.
+set INCLUDE=%WATCOM%\H;%WATCOM%\H\NT
+wcl386 -bt=nt -w3 *.c -fe=..\SKIDCFW.EXE
+if errorlevel 1 goto fail
+del *.obj
+if exist __wcl__.lnk del __wcl__.lnk
+
+wcl386 -bt=nt -w3 -i=. ..\test\selfchk.c drivers.c drvblk.c drvscan.c setup.c install.c util.c -fe=..\SKIDCKW.EXE
+if errorlevel 1 goto fail
+del *.obj
+if exist __wcl__.lnk del __wcl__.lnk
+cd ..
+
+echo.
+echo Built SKIDCFW.EXE and SKIDCKW.EXE. Check the build with:
+echo     SKIDCKW
+if "%OS%"=="Windows_NT" exit /b 0
+goto end

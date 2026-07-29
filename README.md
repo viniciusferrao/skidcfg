@@ -1,68 +1,43 @@
 # skidcfg
 
 Setup program for the Stunts / 4D Sports Driving MS-DOS game from 1990, and a
-drop-in replacement for the `SETUP.EXE` it shipped with.
+drop-in replacement for the `SETUP.EXE`.
 
-The original lists six sound drivers and can never list a seventh, so a game
-that has been given a new driver loses it again the next time somebody runs
-setup. `skidcfg` reads the same `SETUP.DAT`, draws the same screen, writes the
-same file, and builds its menus from the drivers that are actually in the game
-directory.
+![The allegedly Roland Sound Canvas SC-55 driver](doc/snddrv.png)
 
 ## Use
 
-Copy `SKIDCFG.EXE` into the game directory, beside `LOAD.EXE`, and run it.
+Copy `SKIDCFG.EXE` into the game directory and run it.
 
     SKIDCFG.EXE [option]
 
-With no option it behaves like the original SETUP.EXE. Arrow keys move the
-highlight, ENTER selects, F1 explains the highlighted option, ESC leaves
-without writing anything.
+With no options given, it behaves just like the original `SETUP.EXE`. However
+it supports additional command line arguments for specific controls:
 
     /D   list the drivers found, and any block that was not used
     /I   install SKIDCFG in place of SETUP.EXE
-    /U   uninstall SKIDCFG and put the original SETUP.EXE back
+    /U   uninstall SKIDCFG and restore the original SETUP.EXE program
     /V   show the version
     /?   show this help
 
-Nothing else in the directory is touched. `/I` renames the original rather
-than replacing it, and `/U` puts the directory back exactly as it was; neither
-ever deletes the original setup program. What `/U` takes away is the copy of
-`SKIDCFG` that `/I` put there under the other name, and it does that by moving
-it aside first, so a failure halfway through leaves a `SETUP.EXE` either way.
-
 ## What it offers
 
-| video | needs |
-|---|---|
-| MCGA/VGA | 256 colours, and what most machines should pick |
-| EGA | sixteen colours |
-| Tandy | a Tandy 1000 |
-| Hercules | monochrome, the sharpest picture the game has |
-| CGA | four colours, and runs on anything |
+`skidcfg` is an extended implementation of the setup program that adds some
+additional features. Like:
 
-| sound | needs |
-|---|---|
-| Roland MT-32 | an MT-32 or LAPC-I on the MPU-401 port |
-| Sound Blaster | a Sound Blaster |
-| Ad Lib | an Ad Lib, or a card that answers like one |
-| Tandy | a Tandy 1000 |
-| PC speaker | nothing |
-| No music or sound effects | nothing |
+* Compatibility with the original `SETUP.DAT` configuration file.
+* Peaceful coexistence with original `SETUP.EXE` if needed.
+* A row appears only when the driver behind it is really on the disk.
+* Support for driver removal, including shipped ones.
+* Expanded driver support through a self-describing driver mechanism.
 
-Those are the rows a stock game has. A row appears only when the driver behind
-it is on the disk, so a Stunts missing `MT15.DRV` does not offer the MT-32:
-`LOAD.EXE` would stop with `Can't find driver!` and the game would never
-start. `SKIDCFG /D` lists what was found and what was not.
+## Extending with an additional driver
 
-## Adding a driver
+Just drop compliant drivers in the game directory and it should just work.
 
-Drop it in the game directory. Nothing else.
-
-A driver can carry a few lines of text inside its own binary saying what to
-call it and what to say about it, and `skidcfg` grows its menus from what it
-finds. Copy the file in and the row appears; delete it and the row goes. There
-is no list to edit and no rebuild.
+The custom crafted drivers should comply with the format metadata we
+developed so it can be consumed by `skidcfg`. The specification is trivial
+and described as an example:
 
     SKIDCFGDRV01
     sound
@@ -71,73 +46,73 @@ is no list to edit and no rebuild.
     help Select if you have a Roland Sound Canvas on the MPU-401 port.
     SKIDCFGEND
 
-[DRVBLOCK.md](DRVBLOCK.md) is the format, for anyone writing a driver.
-`SKIDCFG /D` shows what `skidcfg` made of yours, and names any block it would
-not use and why.
-
-## Sound Canvas
-
-[skidsc55](https://github.com/viniciusferrao/skidsc55) ships an `SC15.DRV`
-that carries such a block, so copying it into the game directory is all it
-takes for the Roland SC-55 to appear as a seventh sound option. It needs a
-Sound Canvas and not merely a General MIDI module, because the driver uses the
-GS sound set.
-
-There is also a build switch that compiles the row in; see
-[DEVELOP.md](DEVELOP.md). The driver file is the better way, since a row that
-came from a file cannot outlive the file.
+This format is governed by [DRVBLOCK.md](DRVBLOCK.md). Documentation is
+available for anyone wanting to write a driver that will be compatible with
+`skidcfg`.
 
 ## Build
 
-    make               anywhere
-    build.cmd          Windows
-    DOSBUILD.BAT       Microsoft C 5.10, 16-bit, large model
-    WCLBUILD.BAT       Open Watcom 1.9, the same
+If you want to build the software yourself, we provide a batch file per tested
+compiler and a `makefile` for Unix-like systems. Working on the code rather
+than using it? See [DEVELOP.md](DEVELOP.md).
 
-Any C89 compiler. `CC` and `CFLAGS` override the defaults. A DOS build is the
-one that matters, since the program draws through the BIOS and reads the
-keyboard directly; every other build compiles the same sources without a
-screen, which is what keeps four compilers reading the code.
+### Unix
 
-Set `MSCDIR` before `DOSBUILD.BAT`, or `WATCOM` before `WCLBUILD.BAT`.
+    make
 
-There are two DOS builds because Microsoft C 5.10 is the compiler these
-sources were written against and Open Watcom is the one a CI runner can
-install. The released binary is built with Watcom, in the open, from the
-tagged commit; `DOSBUILD.BAT` is the period build and still the one the code
-is shaped by.
-Neither has an `#ifdef` the other does not.
+Any C89 compiler. `CC` and `CFLAGS` override the defaults.
+
+### DOS
+
+    MSCBUILD          Microsoft C 5.10, 16-bit, large model
+    TCBUILD           Turbo C 2.01, 16-bit, large model
+    WCLBUILD          Open Watcom 1.9, 16-bit
+    WCLBUILD 386      Open Watcom 1.9, 32-bit, extender built in
+
+Set `MSCDIR`, `TCDIR` or `WATCOM` to your installation. If unset, the script
+looks for the compiler in the default location.
+
+### Windows
+
+    WCLBUILD WIN32    Open Watcom 1.9, Win32 console
+
+Runs on Windows 95 and later, from the command prompt.
+
+Any modern toolchain should work with the Makefile. Example with MinGW-w64:
+
+    mingw32-make CC=gcc
 
 ## Testing
 
     make selfcheck
 
-Writes and reads back every combination of the two menus, compares two of them
-byte for byte against files a retail Stunts and a retail 4D Sports Driving
-actually shipped, reads a few dozen driver blocks both good and malformed, and
-checks that every F1 paragraph fits the window it opens in. It needs no game
-data, no DOS and no screen.
+The test suite writes and reads back every combination of the two available
+menus and compares two of them byte for byte against files a retail Stunts /
+4D Sports Driving shipped, reads driver blocks for both good and malformed,
+and also checks that every text in the interface fits the window it opens in.
 
 ## Credits
 
-- [restunts](https://github.com/4d-stunts/restunts): the disassembly work that
-  made `SETUP.EXE`'s menus and drawing code readable.
-- [skidsc55](https://github.com/viniciusferrao/skidsc55): the Sound Canvas
-  driver the seventh table entry selects.
+- [restunts](https://github.com/4d-stunts/restunts), for the decompilation of
+  the game: knowledge source and where we could guess the original toolchain.
 
 ## Acknowledgements
 
-Thanks to the [ZakStunts](https://zak.stunts.hu) community and the
-[Stunts Forum](https://forum.stunts.hu), who keep finding reasons for tools
-like this to exist.
+A massive thanks to all the members of the [ZakStunts](https://zak.stunts.hu)
+community and the [Stunts Forum](https://forum.stunts.hu), who made all those
+modifications. Without them there would be no reason to develop `skidcfg`.
 
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
 
-Stunts was written by Distinctive Software and published by Brøderbund in
-1990.
-This program ships no game data and no game code. It does reproduce the menu
-labels and the F1 help text of `SETUP.EXE`, so that the screen reads as the
-original's; those words are Distinctive Software's and the licence above does
-not cover them.
+### Third-party software
+
+`SKIDCF32.EXE` has the DOS/32A extender linked into it as its stub, which is
+what lets one file run on a 386 with nothing else installed.
+
+This product uses DOS/32 Advanced DOS Extender technology.
+
+Its copyright notice, conditions and disclaimer are in `DOS32A.TXT`, which
+ships inside the DOS archive. `SKIDCFG.EXE` and the Win32 build do not
+include it.

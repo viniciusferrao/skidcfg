@@ -4,11 +4,7 @@
 #include "drivers.h"
 #include "drvscan.h"
 #include "setup.h"
-
-#if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-#    define SETUP_DOS 1
-#    include <dos.h>
-#endif
+#include "skidcfg.h"
 
 /* Six lines is the whole file. Reading more would only give the parsers below
  * more places to find a match they should not. */
@@ -17,22 +13,9 @@
 
 /* ------------------------------------------------------------- scanning -- */
 
-static int is_blank(int c)
-{
-    return c == ' ' || c == '\t';
-}
-
-static int upcase(int c)
-{
-    if (c >= 'a' && c <= 'z') {
-        return c - ('a' - 'A');
-    }
-    return c;
-}
-
 static int rest_is_blank(const char *p)
 {
-    while (is_blank((unsigned char)*p)) {
+    while (sk_is_blank((unsigned char)*p)) {
         p++;
     }
     return *p == '\0';
@@ -51,18 +34,18 @@ static int take_tokens(const char **at, const char *want)
     const char *w = want;
 
     for (;;) {
-        while (is_blank((unsigned char)*w)) {
+        while (sk_is_blank((unsigned char)*w)) {
             w++;
         }
         if (*w == '\0') {
             *at = p;
             return 1;
         }
-        while (is_blank((unsigned char)*p)) {
+        while (sk_is_blank((unsigned char)*p)) {
             p++;
         }
-        while (*w != '\0' && !is_blank((unsigned char)*w)) {
-            if (upcase((unsigned char)*p) != upcase((unsigned char)*w)) {
+        while (*w != '\0' && !sk_is_blank((unsigned char)*w)) {
+            if (sk_upcase((unsigned char)*p) != sk_upcase((unsigned char)*w)) {
                 return 0;
             }
             p++;
@@ -70,7 +53,7 @@ static int take_tokens(const char **at, const char *want)
         }
         /* The token in the line has to end where the one being matched does,
          * or /ssb would be found inside a longer word. */
-        if (*p != '\0' && !is_blank((unsigned char)*p)) {
+        if (*p != '\0' && !sk_is_blank((unsigned char)*p)) {
             return 0;
         }
     }
@@ -83,7 +66,7 @@ static int take_int(const char **at, int *out)
     int         digits = 0;
     int         val = 0;
 
-    while (is_blank((unsigned char)*p)) {
+    while (sk_is_blank((unsigned char)*p)) {
         p++;
     }
     if (*p == '-') {
@@ -119,12 +102,13 @@ static int from_indices(const char *line, int *video, int *sound)
     int         v;
     int         s;
 
-    while (is_blank((unsigned char)*p)) {
+    while (sk_is_blank((unsigned char)*p)) {
         p++;
     }
-    if (upcase((unsigned char)p[0]) != 'R' ||
-        upcase((unsigned char)p[1]) != 'E' ||
-        upcase((unsigned char)p[2]) != 'M' || !is_blank((unsigned char)p[3])) {
+    if (sk_upcase((unsigned char)p[0]) != 'R' ||
+        sk_upcase((unsigned char)p[1]) != 'E' ||
+        sk_upcase((unsigned char)p[2]) != 'M' ||
+        !sk_is_blank((unsigned char)p[3])) {
         return 0;
     }
     p += 3;
@@ -205,44 +189,6 @@ static int get_line(FILE *f, char *buf, int max)
     buf[n] = '\0';
     return 1;
 }
-/* ------------------------------------------------------------ the disk -- */
-
-/* Whether a name is in the directory, which is not the same question as
- * whether it can be opened, and the difference decides whether this program
- * writes over somebody's settings.
- *
- * fopen answers the second question. It fails for a file that is not there and
- * for a file that is there and busy, and DOS has both: a network redirector
- * refusing a shared file, a failing floppy, an access denied on a volume
- * mounted from somewhere else. Treating all of that as "no file" is what lets
- * a transient failure be read as a machine that never ran SETUP.EXE, and the
- * defaults that follow get written over settings nobody ever saw.
- *
- * On DOS the directory can simply be asked. _dos_findfirst with an attribute
- * of zero still returns read-only files, which is the case that matters here:
- * a game copied off a CD keeps the attribute.
- *
- * Off DOS there is no C89 way to ask, so this is fopen and a name that cannot
- * be opened reads as absent. Said plainly rather than papered over: the hosted
- * build has no screen and no game directory, it exists so the file format can
- * be exercised, and the machine this decision protects is the one with
- * _dos_findfirst on it. */
-static int file_present(const char *path)
-{
-#ifdef SETUP_DOS
-    struct find_t f;
-
-    return _dos_findfirst(path, _A_NORMAL, &f) == 0;
-#else
-    FILE *f = fopen(path, "rb");
-
-    if (f == NULL) {
-        return 0;
-    }
-    fclose(f);
-    return 1;
-#endif
-}
 
 /* ------------------------------------------------------------- the file -- */
 
@@ -308,7 +254,7 @@ int setup_read(struct setup *s, const char *path)
          * name in the directory that will not open is a file whose contents
          * are unknown, which is the one state this must not let the caller
          * write over. */
-        return file_present(path) ? SETUP_BAD_READ : SETUP_NO_FILE;
+        return sk_file_present(path) ? SETUP_BAD_READ : SETUP_NO_FILE;
     }
     while (n < NLINES) {
         int got = get_line(f, line[n], LINEMAX);
@@ -408,7 +354,7 @@ const char *setup_why(void)
 
 static int in_the_way(const char *name)
 {
-    if (!file_present(name)) {
+    if (!sk_file_present(name)) {
         return 0;
     }
     /* Refused rather than written over, and this is the one place that rule
@@ -496,7 +442,7 @@ int setup_write(const struct setup *s, const char *path)
     }
 
     /* The first run, where there is nothing to keep. */
-    if (!file_present(path)) {
+    if (!sk_file_present(path)) {
         if (rename(new_file, path) != 0) {
             remove(new_file);
             sprintf(why, "%s could not be renamed to %s", new_file, path);

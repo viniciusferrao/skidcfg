@@ -4,11 +4,7 @@
 
 #include "drvblk.h"
 #include "drvscan.h"
-
-#if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-#    define DRV_SCAN_DOS 1
-#    include <dos.h>
-#endif
+#include "skidcfg.h"
 
 /* The indices the original shipped with, which no block may ever be given.
  * Sound 0 to 5 and video 0 to 4 mean what they meant in 1991, so allocation
@@ -23,9 +19,6 @@
  * a sum. A table too big to copy simply cannot be extended, and says so. */
 #define MERGE_MAX 16
 
-/* 8.3 and a NUL. Not NAME_MAX: that is POSIX's, Open Watcom defines it, and
- * a program has no business redefining a name the headers own. */
-#define DRV_NAME_MAX 13
 #define WHY_MAX 72
 
 #define NO_ROOM "there is no room left on the menu"
@@ -38,7 +31,7 @@ struct ext {
     char cmd[DRV_MODE_MAX + 16];
     char disk[12];
     char help[DRV_BLK_HELP_MAX + 1];
-    char from[DRV_NAME_MAX];
+    char from[SK_NAME_MAX];
 };
 
 static struct ext ext[DRV_SCAN_SOUND_MAX + DRV_SCAN_VIDEO_MAX];
@@ -48,7 +41,7 @@ static int        n_ext;
  * Storage rather than a field in the table, because it is true of the built-in
  * rows as much as of anything a block adds and drvtab.h should not have to
  * repeat what its command string already says. */
-static char vcod[MERGE_MAX][DRV_NAME_MAX];
+static char vcod[MERGE_MAX][SK_NAME_MAX];
 
 static struct drv_opt vopt[MERGE_MAX];
 static struct drv_opt sopt[MERGE_MAX];
@@ -58,7 +51,7 @@ static int            grow_video;
 static int            grow_sound;
 static int            ready;
 
-static char skip_file[DRV_SCAN_SKIP_MAX][DRV_NAME_MAX];
+static char skip_file[DRV_SCAN_SKIP_MAX][SK_NAME_MAX];
 static char skip_why[DRV_SCAN_SKIP_MAX][WHY_MAX];
 static int  n_skip;
 static int  n_over;
@@ -78,8 +71,8 @@ static void note_skip(const char *file, const char *why)
                 "and %d more, which there is no room here to name", n_over);
         return;
     }
-    strncpy(skip_file[n_skip], file, DRV_NAME_MAX - 1);
-    skip_file[n_skip][DRV_NAME_MAX - 1] = '\0';
+    strncpy(skip_file[n_skip], file, SK_NAME_MAX - 1);
+    skip_file[n_skip][SK_NAME_MAX - 1] = '\0';
     strncpy(skip_why[n_skip], why, WHY_MAX - 1);
     skip_why[n_skip][WHY_MAX - 1] = '\0';
     n_skip++;
@@ -170,39 +163,31 @@ static int allocate(const struct drv_tab *t, int floor)
     return i;
 }
 
-static char lower(char c)
-{
-    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
-}
-
-/* A digit is as good as a letter in a driver prefix, and that is measured:
- * M015.DRV answers to /sm0, with M0SKIDMS.VCE and M0ENG1.VCE beside it. Worth
- * allowing rather than tidying away, because two characters is all there is and
- * a scheme that wants to number its drivers has nowhere else to put the
- * number. */
-static int alnum(char c)
-{
-    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-           (c >= '0' && c <= '9');
-}
-
 /* A sound driver's switch, worked out from its filename, which is the only
  * place it can come from: LOAD.EXE turns /sxx into XX15.DRV, so a driver not
  * named that way cannot be reached by any switch at all and has no business on
  * a menu. Returns 0 for such a name. */
 static int switch_of(char *out, const char *name)
 {
-    if (strlen(name) != 8 || !alnum(name[0]) || !alnum(name[1]) ||
+    if (strlen(name) != 8 || !sk_alnum(name[0]) || !sk_alnum(name[1]) ||
         name[2] != '1' || name[3] != '5' || strcmp(name + 4, ".DRV") != 0) {
         return 0;
     }
     out[0] = '/';
     out[1] = 's';
-    out[2] = lower(name[0]);
-    out[3] = lower(name[1]);
+    out[2] = (char)sk_lower(name[0]);
+    out[3] = (char)sk_lower(name[1]);
     out[4] = ' ';
     out[5] = '\0';
     return 1;
+}
+
+/* Whether the file a row needs is on the disk. NULL is a row that needs no
+ * file, which is every video mode with no .COD to look for and is not the same
+ * question sk_file_present answers. */
+static int needs_present(const char *name)
+{
+    return name == NULL || sk_file_present(name);
 }
 
 /* Whether two command fragments would put the same thing on line 2 of
@@ -233,7 +218,7 @@ static int cmd_same(const char *a, const char *b)
         if (*b == ' ' && b[1] == '\0') {
             b++;
         }
-        if (lower(*a) != lower(*b)) {
+        if (sk_lower(*a) != sk_lower(*b)) {
             return 0;
         }
         if (*a == '\0') {
@@ -272,7 +257,7 @@ static const char *add(struct drv_blk *b, const char *name)
     e->brief[0] = '(';
     strcpy(e->brief + 1, b->brief);
     strcat(e->brief, ")");
-    strncpy(e->from, name, DRV_NAME_MAX - 1);
+    strncpy(e->from, name, SK_NAME_MAX - 1);
     strcpy(e->help, b->help);
 
     if (b->video) {
@@ -351,21 +336,6 @@ void drv_scan_reset(void)
     ensure();
 }
 
-static int have_file(const char *name)
-{
-    FILE *f;
-
-    if (name == NULL) {
-        return 1; /* a row that needs no file always has it */
-    }
-    f = fopen(name, "rb");
-    if (f == NULL) {
-        return 0;
-    }
-    fclose(f);
-    return 1;
-}
-
 /* Take off the menu every row whose driver is not on the disk.
  *
  * LOAD.EXE stops with "Can't find driver!" and the game does not start, so a
@@ -386,7 +356,7 @@ static void hide_missing(struct drv_tab *t, struct drv_opt *opt)
         opt[i].hidden = 0;
     }
     for (i = 0; i < t->n; i++) {
-        if (opt[i].label != NULL && have_file(opt[i].needs)) {
+        if (opt[i].label != NULL && needs_present(opt[i].needs)) {
             left++;
         }
     }
@@ -394,7 +364,7 @@ static void hide_missing(struct drv_tab *t, struct drv_opt *opt)
         return;
     }
     for (i = 0; i < t->n; i++) {
-        opt[i].hidden = !have_file(opt[i].needs);
+        opt[i].hidden = !needs_present(opt[i].needs);
     }
 }
 
@@ -436,7 +406,7 @@ void drv_scan_offer(const char *text, const char *name)
     }
 }
 
-#ifdef DRV_SCAN_DOS
+#ifdef SK_SCREEN
 
 /* Read in overlapping chunks, because a magic lying across a boundary is the
  * one way a whole file search can miss what it is looking for. Then seek back
@@ -541,44 +511,51 @@ static long block_of(const char *path, char *out, int outmax, long from)
  * every machine: stopping early kept whichever names DOS happened to hand back
  * first, so two directories holding the same files could draw different menus.
  * That is the same reason the sort below is not cosmetic. */
-static int list_files(char names[][DRV_NAME_MAX], int max, int *over)
+static int list_files(char names[][SK_NAME_MAX], int max, int *over)
 {
-    struct find_t f;
-    int           n = 0;
-    int           i;
-    int           j;
+    struct sk_find f;
+    int            n = 0;
+    int            more;
+    int            i;
+    int            j;
 
     *over = 0;
-    if (_dos_findfirst("*.DRV", _A_NORMAL, &f) == 0) {
-        do {
-            if (n < max - 1) {
-                strncpy(names[n], f.name, DRV_NAME_MAX - 1);
-                names[n][DRV_NAME_MAX - 1] = '\0';
-                n++;
-            } else {
-                int worst = 0;
+    for (more = sk_find_first(&f, "*.DRV"); more; more = sk_find_next(&f)) {
+        if (n < max - 1) {
+            strncpy(names[n], f.name, SK_NAME_MAX - 1);
+            names[n][SK_NAME_MAX - 1] = '\0';
+            n++;
+            continue;
+        }
+        /* Full. Keep the lexicographically smallest, so that two machines
+         * holding the same drivers show the same menu whatever order the
+         * directory hands them back in, and count the rest. */
+        {
+            int worst = 0;
 
-                (*over)++;
-                for (j = 1; j < n; j++) {
-                    if (strcmp(names[j], names[worst]) > 0) {
-                        worst = j;
-                    }
-                }
-                if (strcmp(f.name, names[worst]) < 0) {
-                    strncpy(names[worst], f.name, DRV_NAME_MAX - 1);
-                    names[worst][DRV_NAME_MAX - 1] = '\0';
+            (*over)++;
+            for (j = 1; j < n; j++) {
+                if (strcmp(names[j], names[worst]) > 0) {
+                    worst = j;
                 }
             }
-        } while (_dos_findnext(&f) == 0);
+            if (strcmp(f.name, names[worst]) < 0) {
+                strncpy(names[worst], f.name, SK_NAME_MAX - 1);
+                names[worst][SK_NAME_MAX - 1] = '\0';
+            }
+        }
     }
-    if (n < max && _dos_findfirst("LOAD.EXE", _A_NORMAL, &f) == 0) {
-        strncpy(names[n], f.name, DRV_NAME_MAX - 1);
-        names[n][DRV_NAME_MAX - 1] = '\0';
+    sk_find_done(&f);
+
+    if (n < max && sk_find_first(&f, "LOAD.EXE")) {
+        strncpy(names[n], f.name, SK_NAME_MAX - 1);
+        names[n][SK_NAME_MAX - 1] = '\0';
         n++;
     }
+    sk_find_done(&f);
 
     for (i = 1; i < n; i++) {
-        char tmp[DRV_NAME_MAX];
+        char tmp[SK_NAME_MAX];
 
         strcpy(tmp, names[i]);
         for (j = i; j > 0 && strcmp(names[j - 1], tmp) > 0; j--) {
@@ -606,7 +583,7 @@ static int list_files(char names[][DRV_NAME_MAX], int max, int *over)
 
 void drv_scan(void)
 {
-    static char names[SCAN_FILES][DRV_NAME_MAX];
+    static char names[SCAN_FILES][SK_NAME_MAX];
     static char text[DRV_BLK_MAX + 1];
     char        why[WHY_MAX];
     int         over = 0;

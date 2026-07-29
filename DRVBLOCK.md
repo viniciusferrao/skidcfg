@@ -517,3 +517,16 @@ Its help paragraph says what it says on purpose. The SC-55 requirement is a
 real one: the driver uses the GS sound set, and a General MIDI module will play
 the music with the wrong instruments rather than not at all. A paragraph that
 implied any GM module would do would be the thing that caused that.
+
+## What this format does not tell you
+
+How a Stunts driver works inside. `skidcfg` never looks: it derives the switch
+from the filename, reads the block, and executes nothing. So a block is all it
+takes to appear on the menu, and nothing here says what the game will then
+call.
+
+For that, [UnifiedMT15](https://github.com/LowLevelMahn/UnifiedMT15) by
+LowLevelMahn is an independent reverse engineering of `MT15.DRV` in C, and is
+the best public account of the slot layout and the calling conventions a
+driver has to satisfy. It is a reference rather than a dependency: nothing in
+`skidcfg` is derived from it.

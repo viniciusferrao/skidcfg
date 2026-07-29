@@ -44,6 +44,8 @@ cl /c /AL /W3 %EXTRA% scrn.c
 if errorlevel 1 goto fail
 cl /c /AL /W3 %EXTRA% install.c
 if errorlevel 1 goto fail
+cl /c /AL /W3 %EXTRA% util.c
+if errorlevel 1 goto fail
 cl /c /AL /W3 %EXTRA% skidcfg.c
 if errorlevel 1 goto fail
 
@@ -59,7 +61,7 @@ rem           externals that name no source line.
 rem
 rem   /STACK  the default 2 KB is tight once argv and a few automatic buffers
 rem           are on it, and DOS reports the overflow as a bare abnormal exit.
-link /NOI /NOD /STACK:8192 drivers+drvblk+drvscan+setup+scrn+install+skidcfg,..\SKIDCFG.EXE,,LLIBCR+LIBH+EM;
+link /NOI /NOD /STACK:8192 drivers+drvblk+drvscan+setup+scrn+install+util+skidcfg,..\SKIDCFG.EXE,,LLIBCR+LIBH+EM;
 if errorlevel 1 goto fail
 
 rem The self-check. It exercises the whole SETUP.DAT format on files it writes
@@ -68,7 +70,7 @@ rem in test\ so both links can use the same objects; skidcfg.obj is left out
 rem because this file brings its own main().
 cl /c /AL /W3 %EXTRA% /I. ..\test\selfchk.c
 if errorlevel 1 goto fail
-link /NOI /NOD /STACK:8192 selfchk+drivers+drvblk+drvscan+setup+install,..\SKIDCHK.EXE,,LLIBCR+LIBH+EM;
+link /NOI /NOD /STACK:8192 selfchk+drivers+drvblk+drvscan+setup+install+util,..\SKIDCHK.EXE,,LLIBCR+LIBH+EM;
 if errorlevel 1 goto fail
 
 del *.obj

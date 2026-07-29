@@ -1,16 +1,18 @@
 name: release
 
-# Builds SKIDCFG.EXE, generates README.TXT and packages the archive. Push a tag
-# to publish; run it by hand to rehearse without publishing.
+# Builds the three shipped binaries, generates the text files and packages two
+# archives. Push a tag to publish; run it by hand to rehearse without
+# publishing.
 #
 # The binary is built with Open Watcom rather than with Microsoft C 5.10, and
 # that is worth being plain about. MSC 5.10 is the compiler the sources were
-# written against and DOSBUILD.BAT is still the period build, but it cannot be
+# written against and MSCBUILD.BAT is still the period build, but it cannot be
 # installed on a runner, so a release built with it would be a file somebody
 # made on their own machine and asked everyone to trust. Watcom has an action,
 # so what ships is built in the open from the tagged commit. WCLBUILD.BAT is in
 # the tree and README.md names it: it is a documented path, not one only CI
-# knows about.
+# knows about. MSCBUILD.BAT and TCBUILD.BAT are the other two DOS builds and
+# are checked by hand, for the same reason.
 on:
   push:
     tags: ['v*']
@@ -39,9 +41,40 @@ jobs:
           if not exist SKIDCFG.EXE exit /b 1
           if not exist SKIDCHK.EXE exit /b 1
 
+      # The 32-bit binary, with DOS/32A bound in. It wants a 386 and MS-DOS
+      # 4.0, so it is the second download rather than the first, and it is
+      # also the build that reads the sources with a 32-bit int.
+      - name: Build 32-bit
+        shell: cmd
+        run: |
+          call WCLBUILD.BAT 386
+          if errorlevel 1 exit /b 1
+          if not exist SKIDCF32.EXE exit /b 1
+          if not exist SKIDCK32.EXE exit /b 1
+
+      # The Windows console build. Same screen, same keys, different API; it is
+      # a program rather than a compile-only target, so it ships.
+      - name: Build Win32
+        shell: cmd
+        run: |
+          call WCLBUILD.BAT WIN32
+          if errorlevel 1 exit /b 1
+          if not exist SKIDCFW.EXE exit /b 1
+          if not exist SKIDCKW.EXE exit /b 1
+
+      # It runs on the runner, which is the only one of the five that can be
+      # checked without an emulator.
+      - name: Run the Win32 self-check
+        shell: cmd
+        run: |
+          SKIDCKW.EXE
+          if errorlevel 1 exit /b 1
+
       - name: Report
         shell: bash
-        run: ls -l SKIDCFG.EXE SKIDCHK.EXE && sha256sum SKIDCFG.EXE SKIDCHK.EXE
+        run: |
+          ls -l SKIDCFG.EXE SKIDCHK.EXE SKIDCF32.EXE SKIDCK32.EXE SKIDCFW.EXE
+          sha256sum SKIDCFG.EXE SKIDCHK.EXE SKIDCF32.EXE SKIDCK32.EXE SKIDCFW.EXE
 
       - uses: actions/upload-artifact@v4
         with:
@@ -49,6 +82,9 @@ jobs:
           path: |
             SKIDCFG.EXE
             SKIDCHK.EXE
+            SKIDCF32.EXE
+            SKIDCK32.EXE
+            SKIDCFW.EXE
           if-no-files-found: error
 
   # The shipped binary's own self-check, run against the shipped binary.
@@ -88,6 +124,32 @@ jobs:
           grep -q "self-check passed" out/CHK.TXT
           ! grep -q "^FAIL" out/CHK.TXT
 
+      # And the 32-bit one, which is a different compiler target rather than
+      # the same binary twice: int is 32 bits and the screen goes through
+      # int386 instead of int86.
+      - name: Run the 32-bit self-check under DOS
+        run: |
+          set -e
+          rm -rf run out && mkdir -p run out
+          cp dos/SKIDCK32.EXE run/
+          cat > dos32.conf <<'EOF'
+          [sdl]
+          output = surface
+          [dosbox]
+          memsize = 32
+          [autoexec]
+          mount c run
+          mount l out
+          c:
+          SKIDCK32 > L:\CHK32.TXT
+          exit
+          EOF
+          SDL_VIDEODRIVER=dummy dosbox -conf dos32.conf -exit || true
+          echo "--- what the 32-bit build says about itself ---"
+          cat out/CHK32.TXT
+          grep -q "self-check passed" out/CHK32.TXT
+          ! grep -q "^FAIL" out/CHK32.TXT
+
   package:
     needs: check
     runs-on: ubuntu-latest
@@ -117,6 +179,7 @@ jobs:
           [ ${#DOSZIP} -le 8 ] || { echo "$DOSZIP exceeds 8.3"; exit 1; }
           echo "ver=$VER"           >> "$GITHUB_OUTPUT"
           echo "doszip=$DOSZIP.ZIP" >> "$GITHUB_OUTPUT"
+          echo "winzip=skidcfg-$VER-win32.zip" >> "$GITHUB_OUTPUT"
 
       # Generated from README.md at the tagged commit, so the text a release
       # ships cannot lag the text it documents.
@@ -159,10 +222,11 @@ jobs:
       - name: Assemble
         run: |
           set -e
-          make LICENSE.TXT
+          make LICENSE.TXT DOS32A.TXT
           mkdir -p stage
-          cp LICENSE.TXT README.TXT bin/SKIDCFG.EXE stage/
-          chmod +x stage/SKIDCFG.EXE
+          cp LICENSE.TXT README.TXT DOS32A.TXT stage/
+          cp bin/SKIDCFG.EXE bin/SKIDCF32.EXE stage/
+          chmod +x stage/SKIDCFG.EXE stage/SKIDCF32.EXE
           # -0 stores rather than deflates, and that is deliberate. Deflate
           # arrived with PKZIP 2.04g in 1993; PKUNZIP 1.1, which is what a
           # machine of the game's own vintage has, cannot read a deflated
@@ -170,8 +234,19 @@ jobs:
           # way, so the compression buys nothing worth an extractor the reader
           # may not have. -X keeps the extra fields out.
           (cd stage && zip -X -0 "../${{ steps.v.outputs.doszip }}" \
-                           LICENSE.TXT README.TXT SKIDCFG.EXE)
-          sha256sum "${{ steps.v.outputs.doszip }}" > SHA256SUMS
+                           LICENSE.TXT README.TXT DOS32A.TXT \
+                           SKIDCFG.EXE SKIDCF32.EXE)
+
+          # The Windows archive. No 8.3 name and no stored-only rule: the
+          # reader has a modern extractor, and the DOS/32A notice does not
+          # travel because nothing in here links the extender.
+          mkdir -p win32
+          cp LICENSE.TXT README.TXT bin/SKIDCFW.EXE win32/
+          (cd win32 && zip -X -9 "../${{ steps.v.outputs.winzip }}" \
+                           LICENSE.TXT README.TXT SKIDCFW.EXE)
+
+          sha256sum "${{ steps.v.outputs.doszip }}" \
+                    "${{ steps.v.outputs.winzip }}" > SHA256SUMS
 
       # Verification comes free twice over: SHA256SUMS for a modern machine, and
       # the CRC-32 the ZIP format already stores per member, which is the same
@@ -183,6 +258,8 @@ jobs:
           sha256sum -c SHA256SUMS
           unzip -t "${{ steps.v.outputs.doszip }}"
           unzip -l "${{ steps.v.outputs.doszip }}"
+          unzip -t "${{ steps.v.outputs.winzip }}"
+          unzip -l "${{ steps.v.outputs.winzip }}"
           cat SHA256SUMS
 
       - uses: actions/upload-artifact@v4
@@ -190,6 +267,7 @@ jobs:
           name: release-${{ steps.v.outputs.ver }}
           path: |
             ${{ steps.v.outputs.doszip }}
+            ${{ steps.v.outputs.winzip }}
             SHA256SUMS
           if-no-files-found: error
 

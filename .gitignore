@@ -7,6 +7,7 @@
 /selfcheck
 /selfcheck.exe
 /selfcheck-sc55
+/selfcheck-min
 /drvtab.bak
 /SKIDCHK.EXE
 *.o
@@ -17,3 +18,8 @@
 
 /README.TXT
 /LICENSE.TXT
+/SKIDCF32.EXE
+/SKIDCK32.EXE
+/DOS32A.TXT
+/SKIDCFW.EXE
+/SKIDCKW.EXE

@@ -1,19 +1,42 @@
 #include <stdio.h>
+
 #include "scrn.h"
+#include "skidcfg.h"
 
-/* Microsoft C, Watcom and DJGPP each name the target differently. */
-#if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-#    define SCRN_DOS 1
-#endif
-
-#ifdef SCRN_DOS
+#ifdef SK_DOS
 
 #    include <dos.h>
+#    ifdef __WATCOMC__
+#        include <i86.h> /* int86 and REGS, which Watcom keeps here */
+#    endif
+
+/* The two things a BIOS call is spelled differently for on a 386.
+ *
+ * REGS.x is the word set on a 16-bit target and there is nothing else. Build
+ * for 386 and REGS.x becomes the 32-bit set with the words moved to REGS.w, so
+ * r.x.cx stops compiling rather than quietly meaning something else. And the
+ * 32-bit runtime has no int86 at all: the call that reaches real mode through
+ * the extender is int386, with the same shape and the wider registers.
+ *
+ * The guard asks about the target and not about the host, because DOS has
+ * 32-bit compilers; see memory/c89-and-flags.md in the scaffold. Everything
+ * else in this file is the same source for both. */
+#    ifdef SK_16BIT
+#        define SCRN_WORD x
+#        define SCRN_INT int86
+#    else
+#        define SCRN_WORD w
+#        define SCRN_INT int386
+#    endif
 
 /* 226Dh takes the cursor shape in CX. Its callers push it from a variable, so
  * the disassembly alone does not say what the value is, but the main entry at
  * 15A8h pushes 2000h before calling it: the start line above the end line,
  * which is the conventional way to switch a cursor off on every adapter. */
+/* The video BIOS. Every call in this file goes to it, and the function goes
+ * in AH. */
+#    define BIOS_VIDEO 0x10
+
 #    define CURSOR_OFF 0x2000
 #    define CURSOR_ON 0x0607
 
@@ -23,10 +46,10 @@ static void mode3(int bg)
 
     r.h.ah = 0; /* 80x25 colour text, which also clears */
     r.h.al = 3;
-    int86(0x10, &r, &r);
+    SCRN_INT(BIOS_VIDEO, &r, &r);
     r.h.ah = 5; /* display page 0 */
     r.h.al = 0;
-    int86(0x10, &r, &r);
+    SCRN_INT(BIOS_VIDEO, &r, &r);
     scrn_blank(0, 0, SCRN_LAST_ROW, SCRN_LAST_COL, bg);
 }
 
@@ -55,7 +78,7 @@ void scrn_blank(int top, int left, int bottom, int right, int bg)
     r.h.cl = (unsigned char)left;
     r.h.dh = (unsigned char)bottom;
     r.h.dl = (unsigned char)right;
-    int86(0x10, &r, &r);
+    SCRN_INT(BIOS_VIDEO, &r, &r);
 }
 
 void scrn_puts(const char *s, int col, int row, int fg, int bg)
@@ -74,7 +97,7 @@ void scrn_puts(const char *s, int col, int row, int fg, int bg)
         r.h.bh = 0;
         r.h.dh = (unsigned char)row;
         r.h.dl = (unsigned char)col;
-        int86(0x10, &r, &r);
+        SCRN_INT(BIOS_VIDEO, &r, &r);
         if (*s == '\0') {
             return;
         }
@@ -93,8 +116,8 @@ void scrn_puts(const char *s, int col, int row, int fg, int bg)
         r.h.al = (unsigned char)*s;
         r.h.bh = 0;
         r.h.bl = (unsigned char)(fg | bg);
-        r.x.cx = 1;
-        int86(0x10, &r, &r);
+        r.SCRN_WORD.cx = 1;
+        SCRN_INT(BIOS_VIDEO, &r, &r);
         col++;
         s++;
     }
@@ -108,7 +131,7 @@ void scrn_cursor(int col, int row)
     r.h.bh = 0;
     r.h.dh = (unsigned char)row;
     r.h.dl = (unsigned char)col;
-    int86(0x10, &r, &r);
+    SCRN_INT(BIOS_VIDEO, &r, &r);
 }
 
 static void cursor_shape(unsigned int cx)
@@ -116,8 +139,8 @@ static void cursor_shape(unsigned int cx)
     union REGS r;
 
     r.h.ah = 1;
-    r.x.cx = cx;
-    int86(0x10, &r, &r);
+    r.SCRN_WORD.cx = cx;
+    SCRN_INT(BIOS_VIDEO, &r, &r);
 }
 
 void scrn_cursor_hide(void)
@@ -128,6 +151,165 @@ void scrn_cursor_hide(void)
 void scrn_cursor_show(void)
 {
     cursor_shape(CURSOR_ON);
+}
+
+#elif defined(SK_WIN32)
+
+/* The same screen on a Windows console.
+ *
+ * This is not an approximation of the DOS build, and it is worth saying why:
+ * the attribute byte the original passes is already the layout the console
+ * wants. Blue is bit 0, green bit 1, red bit 2, intensity bit 3, and the
+ * background is the same four bits shifted up by four, in both. So the
+ * constants in scrn.h go to WriteConsoleOutputAttribute unchanged and the
+ * colours are the colours, rather than a table mapping one palette onto
+ * another.
+ *
+ * The code page is set to 437 for the same reason. The border characters are
+ * DAh, BFh, B3h and C4h out of the shipped binary, and under any other page
+ * those are accented letters.
+ */
+#    include <windows.h>
+
+static HANDLE out_handle(void)
+{
+    static HANDLE h = NULL;
+
+    if (h == NULL) {
+        h = GetStdHandle(STD_OUTPUT_HANDLE);
+    }
+    return h;
+}
+
+static UINT saved_cp;
+
+void scrn_open(int bg)
+{
+    COORD                      size;
+    SMALL_RECT                 win;
+    CONSOLE_SCREEN_BUFFER_INFO info;
+
+    saved_cp = GetConsoleOutputCP();
+    SetConsoleOutputCP(437);
+
+    /* The window has to come in before the buffer can shrink to meet it, and
+     * the buffer has to grow before the window can expand into it, so both
+     * orders are attempted and the one that applies wins. */
+    win.Left = 0;
+    win.Top = 0;
+    win.Right = SCRN_LAST_COL;
+    win.Bottom = SCRN_LAST_ROW;
+    size.X = SCRN_COLS;
+    size.Y = SCRN_ROWS;
+    SetConsoleWindowInfo(out_handle(), TRUE, &win);
+    SetConsoleScreenBufferSize(out_handle(), size);
+    SetConsoleWindowInfo(out_handle(), TRUE, &win);
+
+    if (GetConsoleScreenBufferInfo(out_handle(), &info)) {
+        /* A console that refused the resize is still usable as long as it is
+         * no smaller; the program draws inside 80 by 25 and never past it. */
+        (void)info;
+    }
+    scrn_blank(0, 0, SCRN_LAST_ROW, SCRN_LAST_COL, bg);
+    scrn_cursor_hide();
+}
+
+void scrn_close(void)
+{
+    scrn_blank(0, 0, SCRN_LAST_ROW, SCRN_LAST_COL, SCRN_BLACK);
+    scrn_cursor(0, 0);
+    scrn_cursor_show();
+    if (saved_cp != 0) {
+        SetConsoleOutputCP(saved_cp);
+    }
+}
+
+void scrn_blank(int top, int left, int bottom, int right, int bg)
+{
+    COORD at;
+    DWORD wrote;
+    WORD  attr = (WORD)(bg | 0x07); /* the original's OR, see scrn.h */
+    int   row;
+    int   span = right - left + 1;
+
+    if (span <= 0) {
+        return;
+    }
+    for (row = top; row <= bottom; row++) {
+        at.X = (SHORT)left;
+        at.Y = (SHORT)row;
+        FillConsoleOutputCharacterA(out_handle(), ' ', (DWORD)span, at, &wrote);
+        FillConsoleOutputAttribute(out_handle(), attr, (DWORD)span, at, &wrote);
+    }
+}
+
+void scrn_puts(const char *s, int col, int row, int fg, int bg)
+{
+    COORD at;
+    DWORD wrote;
+    WORD  attr = (WORD)(fg | bg);
+    char  ch;
+    int   start = col;
+
+    if (s == NULL) {
+        return;
+    }
+    /* Shaped like the DOS build, which is shaped like 2221h: tab and newline
+     * move without writing, and the loop ends on the terminator. */
+    for (;;) {
+        if (*s == '\0') {
+            scrn_cursor(col, row);
+            return;
+        }
+        if (*s == '\t') {
+            col += 4;
+            s++;
+            continue;
+        }
+        if (*s == '\n') {
+            col = start;
+            row++;
+            s++;
+            continue;
+        }
+        ch = *s;
+        at.X = (SHORT)col;
+        at.Y = (SHORT)row;
+        WriteConsoleOutputCharacterA(out_handle(), &ch, 1, at, &wrote);
+        WriteConsoleOutputAttribute(out_handle(), &attr, 1, at, &wrote);
+        col++;
+        s++;
+    }
+}
+
+void scrn_cursor(int col, int row)
+{
+    COORD at;
+
+    at.X = (SHORT)col;
+    at.Y = (SHORT)row;
+    SetConsoleCursorPosition(out_handle(), at);
+}
+
+static void cursor_visible(BOOL on)
+{
+    CONSOLE_CURSOR_INFO info;
+
+    if (!GetConsoleCursorInfo(out_handle(), &info)) {
+        return;
+    }
+    info.bVisible = on;
+    SetConsoleCursorInfo(out_handle(), &info);
+}
+
+void scrn_cursor_hide(void)
+{
+    cursor_visible(FALSE);
+}
+
+void scrn_cursor_show(void)
+{
+    cursor_visible(TRUE);
 }
 
 #else

@@ -2,16 +2,18 @@
 #include <string.h>
 
 #include "drvblk.h"
+#include "skidcfg.h"
 
 /* The joined paragraph before it is wrapped. A block is 2048 bytes and most
  * of a big one is help, so this cannot be reached without the block limit
  * being hit first; it is sized to make that true rather than to be generous. */
 #define JOIN_MAX 1536
 
-static int is_blank(int c)
-{
-    return c == ' ' || c == '\t';
-}
+/* The printable range DRVBLOCK.md publishes: 20h to 7Eh, space through tilde.
+ * Below it are control codes the screen would obey rather than draw, above it
+ * are the bytes whose glyph depends on the machine's code page. */
+#define BLK_FIRST_PRINTABLE 0x20
+#define BLK_LAST_PRINTABLE 0x7E
 
 /* One line of text into buf, without its terminator and with a CR before that
  * terminator dropped, so a block written by a DOS editor reads the same as one
@@ -66,14 +68,14 @@ static void trim(char *s)
     int i = 0;
     int n;
 
-    while (s[i] != '\0' && is_blank(s[i])) {
+    while (s[i] != '\0' && sk_is_blank(s[i])) {
         i++;
     }
     if (i > 0) {
         memmove(s, s + i, strlen(s + i) + 1);
     }
     n = (int)strlen(s);
-    while (n > 0 && is_blank(s[n - 1])) {
+    while (n > 0 && sk_is_blank(s[n - 1])) {
         s[--n] = '\0';
     }
 }
@@ -88,11 +90,11 @@ static int key_is(const char *line, const char *key, const char **val)
     if (strncmp(line, key, n) != 0) {
         return 0;
     }
-    if (line[n] != '\0' && !is_blank(line[n])) {
+    if (line[n] != '\0' && !sk_is_blank(line[n])) {
         return 0;
     }
     *val = line + n;
-    while (is_blank(**val)) {
+    while (sk_is_blank(**val)) {
         (*val)++;
     }
     return 1;
@@ -136,7 +138,7 @@ static int printable(const char *s)
     while (*s != '\0') {
         unsigned char c = (unsigned char)*s;
 
-        if (c < 0x20 || c > 0x7E) {
+        if (c < BLK_FIRST_PRINTABLE || c > BLK_LAST_PRINTABLE) {
             return 0;
         }
         s++;

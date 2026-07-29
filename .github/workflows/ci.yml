@@ -163,10 +163,35 @@ jobs:
           if not exist SKIDCFG.EXE exit /b 1
           if not exist SKIDCHK.EXE exit /b 1
 
+      # The same sources with a 32-bit int, which is the half of this the
+      # 16-bit build cannot do. A file offset kept in an int was correct under
+      # every hosted compiler and wrong at 16 bits; the reverse mistake, code
+      # that assumes the narrow width, fails to compile here instead of
+      # shipping.
+      - name: Build 32-bit with Open Watcom
+        shell: cmd
+        run: |
+          call WCLBUILD.BAT 386
+          if errorlevel 1 exit /b 1
+          if not exist SKIDCF32.EXE exit /b 1
+          if not exist SKIDCK32.EXE exit /b 1
+
+      # And the Windows console build, which is the one of the five that can
+      # be run on the runner itself.
+      - name: Build and run Win32
+        shell: cmd
+        run: |
+          call WCLBUILD.BAT WIN32
+          if errorlevel 1 exit /b 1
+          SKIDCKW.EXE
+          if errorlevel 1 exit /b 1
+
       - uses: actions/upload-artifact@v4
         with:
           name: dos-ci
-          path: SKIDCHK.EXE
+          path: |
+            SKIDCHK.EXE
+            SKIDCK32.EXE
           if-no-files-found: error
 
   # build.cmd is the other Windows path, and it needs a job because a build
@@ -222,3 +247,26 @@ jobs:
           cat out/CHK.TXT
           grep -q "self-check passed" out/CHK.TXT
           ! grep -q "^FAIL" out/CHK.TXT
+
+      - name: Run the 32-bit self-check under DOS
+        run: |
+          set -e
+          rm -rf run out && mkdir -p run out
+          cp dos/SKIDCK32.EXE run/
+          cat > dos32.conf <<'EOF'
+          [sdl]
+          output = surface
+          [dosbox]
+          memsize = 32
+          [autoexec]
+          mount c run
+          mount l out
+          c:
+          SKIDCK32 > L:\CHK32.TXT
+          exit
+          EOF
+          SDL_VIDEODRIVER=dummy dosbox -conf dos32.conf -exit || true
+          echo "--- what the 32-bit build says about itself ---"
+          cat out/CHK32.TXT
+          grep -q "self-check passed" out/CHK32.TXT
+          ! grep -q "^FAIL" out/CHK32.TXT

@@ -21,11 +21,12 @@ EXTRA   ?=
 # no drivers and says so, and install.c decides what state a game directory is
 # in without drawing anything, which leaves only scrn.c and skidcfg.c out.
 CHKSRC   = src/drivers.c src/drvblk.c src/drvscan.c src/setup.c \
-           src/install.c
+           src/install.c src/util.c
 
 SRC      = $(CHKSRC) src/scrn.c src/skidcfg.c
 HDR      = src/drivers.h src/drvblk.h src/drvscan.h src/drvtab.h \
-           src/mainhlp.h src/setup.h src/scrn.h src/install.h src/version.h
+           src/mainhlp.h src/setup.h src/scrn.h src/install.h \
+           src/skidcfg.h src/version.h
 
 # Where "make stage" drops the hosted binary. There is deliberately no default:
 # it used to be ".", which made the target "cp skidcfg ." and an error from cp
@@ -135,10 +136,28 @@ LICENSE.TXT: LICENSE tools/asciify.sed
 	fi
 	@echo "$@ is seven-bit ASCII with CRLF"
 
+# DOS/32A's own licence, which travels with any archive holding SKIDCF32.EXE:
+# the extender is linked into that binary, and clause 2 asks for the notice in
+# the materials provided with the distribution. Clause 3 asks for one sentence
+# of acknowledgment in the end-user documentation, which is in README.md and so
+# arrives in README.TXT.
+#
+# The copy under tools/ came from the Open Watcom 1.9 installation rather than
+# from another project, so it is the Liberty Edition text that matches the
+# extender actually bound in.
+DOS32A.TXT: tools/dos32a-license.txt
+	sed -f tools/asciify.sed $< | sed 's/$$/\r/' > $@
+	@if LC_ALL=C tr -d '\r\n' < $@ | LC_ALL=C grep -q '[^ -~]'; then \
+	  echo "$@ still has bytes a DOS code page would mangle:" >&2; \
+	  LC_ALL=C grep -n '[^ -~]' $@ >&2; rm -f $@; exit 1; \
+	fi
+	@echo "$@ is seven-bit ASCII with CRLF"
+
 clean:
 	rm -f skidcfg skidcfg.exe SKIDCFG.EXE SKIDCHK.EXE selfcheck \
 	      selfcheck.exe selfcheck-sc55 selfcheck-min drvtab.bak \
-	      README.TXT LICENSE.TXT src/*.o src/*.obj
+	      README.TXT LICENSE.TXT DOS32A.TXT SKIDCF32.EXE SKIDCK32.EXE \
+	      src/*.o src/*.obj
 
 .PHONY: all stage selfcheck selfcheck-sc55 selfcheck-min format \
         format-check lint clean

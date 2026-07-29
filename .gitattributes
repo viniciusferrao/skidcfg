@@ -1,11 +1,32 @@
-# LF in the repository for everything text, so the C sources and the Makefile
-# are one spelling whatever checked them out.
+# Every file is stored LF in the repository. What differs is what lands in the
+# working tree, and that follows whichever compiler is fussiest about it.
 * text=auto eol=lf
 
-# Except what DOS parses: COMMAND.COM wants CRLF and mis-parses a lone LF, and
-# DOSBUILD.BAT is the build that matters here. Both spellings of the extension,
-# because pattern matching is only case insensitive on a case insensitive
-# filesystem and the file is DOSBUILD.BAT.
+# The C sources check out CRLF, because DOS is the primary target and Turbo C
+# 2.01 miscompiles a source file with Unix line endings: it emits a nearly
+# empty object, reports nothing at all, and the failure surfaces much later as
+# an undefined _main at link time. Measured here before this rule existed.
+#
+# The other four compilers read either ending, and so does every modern one, so
+# this costs the secondary hosts nothing.
+#
+# eol=crlf changes the checkout only. The blobs stay LF, so diffs, blame and
+# review are unaffected, and anything parsing a source file in the working tree
+# wants tr -d '\r'.
+*.c text eol=crlf
+*.h text eol=crlf
+
+# What DOS parses: COMMAND.COM wants CRLF and mis-parses a lone LF, and
+# MSCBUILD.BAT and TCBUILD.BAT are builds that run there. Both spellings of the
+# extension, because pattern matching is only case insensitive on a case
+# insensitive filesystem and the files are MSCBUILD.BAT and TCBUILD.BAT.
 *.bat text eol=crlf
 *.BAT text eol=crlf
 *.cmd text eol=crlf
+
+# The DOS/32A licence, shipped in the DOS archive and read there.
+tools/dos32a-license.txt text eol=crlf
+
+# Screenshots are binary; text=auto above would otherwise guess, and a mangled
+# PNG is not obvious until somebody opens the README.
+*.png binary
