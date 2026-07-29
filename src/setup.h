@@ -61,8 +61,26 @@ struct setup {
     char tail[SETUP_TAIL_N][SETUP_TAIL_MAX];
 };
 
+/* What setup_read() gives back. A file that is not there and a file that could
+ * not be read are different things and the difference matters: the first is an
+ * ordinary machine SETUP.EXE has never run on, and the second is a file whose
+ * contents are unknown. Writing over one of those would replace settings
+ * nobody has seen with defaults nobody chose, so the caller is expected not
+ * to. */
+enum setup_result {
+    SETUP_OK = 0,
+    SETUP_NO_FILE = 1, /* nothing there, and the defaults stand */
+    SETUP_BAD_READ =
+        2 /* something is there and the disk would not give it up */
+};
+
 void setup_default(struct setup *s);
 int  setup_read(struct setup *s, const char *path);
 int  setup_write(const struct setup *s, const char *path);
+
+/* Why the last setup_write() refused, for a caller with somewhere to print it.
+ * A sentence with no full stop and no newline, naming the file where there is
+ * one to name. Empty before the first failure. */
+const char *setup_why(void);
 
 #endif

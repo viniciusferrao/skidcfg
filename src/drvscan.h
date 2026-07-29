@@ -11,7 +11,7 @@
  * The switch. LOAD.EXE derives a driver's filename from it, so /sxx loads
  * XX15.DRV and SC15.DRV is /ssc necessarily. That is measured rather than
  * assumed: SC15.DRV copied to ZZ15.DRV and asked for as /szz plays exactly as
- * /ssc does, and produces silence the moment the file is removed. Deriving it
+ * /ssc does, and stops the game the moment the file is removed. Deriving it
  * here rather than letting a block declare one is what makes a collision
  * impossible, because two files cannot share a name in one directory.
  *
@@ -39,8 +39,9 @@
 #define DRV_SCAN_SOUND_MAX 4
 #define DRV_SCAN_VIDEO_MAX 5
 
-/* How many blocks may be refused before the rest go uncounted. Well past any
- * real directory; it is here so the list has a size. */
+/* How many refusals the list holds. The last one is spent on a count of
+ * whatever did not fit rather than on a name, so a scan that refuses more than
+ * this still says how many; see note_skip(). */
 #define DRV_SCAN_SKIP_MAX 8
 
 /* Read the current directory and merge. Safe to call more than once, and
@@ -72,12 +73,10 @@ void drv_scan_finish(void);
 const struct drv_tab *drv_scan_video(void);
 const struct drv_tab *drv_scan_sound(void);
 
-/* Which file a row came from, or NULL for one that is built in. */
-const char *drv_scan_from(const struct drv_opt *o);
-
 /* The blocks that were read and not used. Nothing is ever skipped silently:
  * a driver that does not appear on the menu has a file and a reason here, and
- * SKIDCFG /D prints them. */
+ * SKIDCFG /D prints them. More refusals than the list holds come out as a
+ * count on the last line rather than as nothing at all. */
 int         drv_scan_skipped(void);
 const char *drv_scan_skip_file(int i);
 const char *drv_scan_skip_why(int i);

@@ -33,6 +33,7 @@
 #include "drivers.h"
 #include "drvblk.h"
 #include "drvscan.h"
+#include "install.h"
 #include "setup.h"
 
 /* For DRV_TABLE_STOCK and nothing else. With neither row macro defined this
@@ -48,9 +49,24 @@
  * other rather than against a copy of themselves. */
 #include "version.h"
 
+/* The same test src/drvscan.c makes, for the same reason: one check here reads
+ * a directory, and reading a directory is DOS. Everything else in this file
+ * runs anywhere. */
+#if defined(MSDOS) || defined(__MSDOS__) || defined(__DOS__)
+#    define ON_DOS 1
+#    include <dos.h>
+#endif
+
 #define DATMAX 256
 
 static const char *DAT = "SCTEST.DAT";
+
+/* What src/setup.c builds the new file under, and what the old one waits under
+ * while it takes its place. Written down here rather than asked for, because
+ * what is being checked is that they are gone afterwards and that neither is
+ * ever written over. */
+static const char *TMP_NEW = "SCTEST.$N$";
+static const char *TMP_OLD = "SCTEST.$O$";
 
 static int failures = 0;
 
@@ -147,6 +163,23 @@ static long read_bytes(const char *path, unsigned char *buf, long max)
 
 #endif
 
+/* Whether a file holds exactly these bytes. For the scratch names src/setup.c
+ * must refuse rather than write over, where what matters is that somebody
+ * else's file came through untouched. */
+static int file_says(const char *path, const char *want)
+{
+    char  got[DATMAX];
+    FILE *f = fopen(path, "rb");
+    long  n;
+
+    if (f == NULL) {
+        return 0;
+    }
+    n = (long)fread(got, 1, (size_t)DATMAX, f);
+    fclose(f);
+    return n == (long)strlen(want) && memcmp(got, want, (size_t)n) == 0;
+}
+
 /* int, not long: every value compared here is an index, a length or a flag. */
 static void expect(const char *what, int got, int want)
 {
@@ -241,6 +274,10 @@ static void check_table(const char *what, const struct drv_tab *t)
     printf("--    %s: %d entries, %d of them offered\n", what, t->n, rows);
     expect("it has at least one entry", t->n > 0, 1);
     expect("and offers at least one of them", rows > 0, 1);
+    /* And no more than the menu can draw. driver_menu clamps to this and
+     * would otherwise lose the rows past it without a word, which a table
+     * somebody edits is exactly how it would happen. */
+    expect("and no more than the menu has room for", rows <= DRV_ROWS_MAX, 1);
 
     for (i = 0; i < t->n; i++) {
         for (j = i + 1; j < t->n; j++) {
@@ -340,10 +377,10 @@ static void check_help(void)
     check_help_of(&drv_video, &fits);
     check_help_of(&drv_sound, &fits);
 
-    /* The rows that are not drivers have paragraphs too, and they used to be
-     * checked by nobody: they lived in skidcfg.c, which this does not link
-     * because that file has the main(). They are in a header now so that the
-     * same limit applies to every word the help window ever shows. */
+    /* The rows that are not drivers have paragraphs too, and they are in a
+     * header of their own rather than in skidcfg.c so that this can reach
+     * them: skidcfg.c has the main() and cannot be linked here. The same
+     * limit applies to every word the help window ever shows. */
     for (i = 0; i < MAIN_HELP_N; i++) {
         if (!help_fits(main_help[i])) {
             printf("FAIL  main menu help %d does not fit the window\n", i);
@@ -464,6 +501,46 @@ static void check_file(void)
     expect("an index that is not in the table is refused",
            setup_write(&s, DAT) != 0, 1);
     expect("and leaves no file behind", file_exists(DAT), 0);
+
+    /* The file is built under another name and moved into place, so that a
+     * disk that fills up cannot leave the game with half a SETUP.DAT. What
+     * that must not do is leave the other names behind: a stray SCTEST.$N$ in
+     * a directory is litter this program put there. */
+    setup_default(&s);
+    expect("a file can be written where there was none", setup_write(&s, DAT),
+           0);
+    expect("and no scratch file is left beside it", file_exists(TMP_NEW), 0);
+    expect("nor the other one", file_exists(TMP_OLD), 0);
+    expect("writing over one already there works too", setup_write(&s, DAT), 0);
+    expect("and still leaves neither",
+           file_exists(TMP_NEW) || file_exists(TMP_OLD), 0);
+    expect("while the file itself is there", file_exists(DAT), 1);
+
+    /* Neither scratch name is written over, whatever is under it. A machine
+     * switched off mid-replacement leaves one of them behind holding the only
+     * copy of somebody's settings, and src/install.c parks a copy of this
+     * program under a scratch name of its own, so a writer that truncated
+     * whatever it found could take away the only way to undo an install.
+     * Refused, and the file in the way is named. */
+    expect("a file where the new one goes is left alone",
+           write_text(TMP_NEW, "not ours\r\n"), 0);
+    expect("and the write is refused", setup_write(&s, DAT) != 0, 1);
+    expect("the file in the way is untouched",
+           file_says(TMP_NEW, "not ours\r\n"), 1);
+    expect("and it is named", strstr(setup_why(), TMP_NEW) != NULL, 1);
+    remove(TMP_NEW);
+
+    expect("a file where the old one waits is left alone too",
+           write_text(TMP_OLD, "nor this\r\n"), 0);
+    expect("and that write is refused as well", setup_write(&s, DAT) != 0, 1);
+    expect("with the other name in the reason",
+           strstr(setup_why(), TMP_OLD) != NULL, 1);
+    remove(TMP_OLD);
+
+    /* And the settings that were there are still there afterwards, which is
+     * the whole point of refusing rather than writing over. */
+    expect("the file it would not replace still reads", setup_read(&s, DAT), 0);
+    remove(DAT);
 }
 
 /* ------------------------------------------------------- the stock table -- */
@@ -689,6 +766,15 @@ static void check_stock(void)
 
 static void expect_str(const char *what, const char *got, const char *want)
 {
+    /* NULL is a real value in a drv_opt: a built-in row has no from, and a row
+     * with no help has no help. Handing one to strcmp is undefined behaviour
+     * and the sanitisers say so, but a check that aborts tells you less than a
+     * check that reports, so it is a failure rather than a crash. */
+    if (got == NULL) {
+        printf("FAIL  %s is NULL, expected \"%s\"\n", what, want);
+        failures++;
+        return;
+    }
     if (strcmp(got, want) != 0) {
         printf("FAIL  %s is \"%s\", expected \"%s\"\n", what, got, want);
         failures++;
@@ -836,9 +922,10 @@ static void check_block(void)
                    "SKIDCFGDRV01\nsound\nlabel X\nlabel Y\nbrief X\n"
                    "SKIDCFGEND\n");
     /* A key this build does not know is ignored, not refused, so that a later
-     * format can add one and a driver carrying it still works here. Both of
-     * these are keys an earlier draft of the format had and this one does not,
-     * which is exactly the shape the problem takes. */
+     * format can add one and a driver carrying it still works here. The keys
+     * offered are cmd and index, which are the two things the format
+     * deliberately leaves to skidcfg: a driver that tries to declare them is
+     * exactly the case this rule has to absorb rather than fail on. */
     why = drv_blk_parse(&b, "SKIDCFGDRV01\nsound\nlabel Roland SC-55\n"
                             "brief SC-55\ncmd /ssc\nindex 6\n"
                             "author somebody\n"
@@ -949,6 +1036,105 @@ static void check_block(void)
         expect("and a buffer without it says so",
                drv_blk_find(image, (int)sizeof image), -1);
     }
+
+    /* --- what the search hands over, which is not always a block ---
+     *
+     * The magic is looked for in a binary, so anything can follow it: a driver
+     * with the bytes in a jump table, a half written block, an assembler
+     * string with no newline after it. A first line that runs past the buffer
+     * has to be a refusal and nothing else. Trim it before the length is
+     * checked and it reads, and can write, off the end of a buffer holding no
+     * line at all. */
+    {
+        static char runon[DRV_BLK_LINE_MAX * 2];
+
+        memset(runon, 'x', sizeof runon);
+        memcpy(runon, DRV_BLK_MAGIC, strlen(DRV_BLK_MAGIC));
+        runon[sizeof runon - 1] = '\0';
+        expect_refused("a first line with no end to it", runon);
+
+        /* And with the one byte that ends it put back, the same bytes are a
+         * refusal for the ordinary reason instead. */
+        runon[DRV_BLK_LINE_MAX - 2] = '\n';
+        expect_refused("a first line that ends but is not the magic", runon);
+    }
+
+    /* Exactly at the published limit and one over it, in both line endings.
+     *
+     * DRVBLOCK.md says 128 to people writing drivers, and a format that says
+     * 128 and takes 127 is a format with a lie in it. All four cases, because
+     * the two endings can disagree: count the CR of a CRLF as content and the
+     * limit is 128 from an assembler and 127 from the DOS editor the CR is
+     * there to support, which is not a limit anybody could work to. And both
+     * sides of it, so an off-by-one cannot pass by refusing a line somebody is
+     * entitled to. */
+    {
+        static char atlimit[DRV_BLK_LINE_MAX * 2];
+        int         len;
+        int         crlf;
+
+        for (crlf = 0; crlf < 2; crlf++) {
+            const char *end = crlf ? "\r\n" : "\n";
+            const char *how = crlf ? "CRLF" : "LF";
+
+            for (len = DRV_BLK_LINE_MAX; len <= DRV_BLK_LINE_MAX + 1; len++) {
+                char what[64];
+                int  n;
+
+                /* A comment, so the long line is legal in itself and only its
+                 * length is under test. Two of its characters are the "; ". */
+                strcpy(atlimit, "SKIDCFGDRV01");
+                strcat(atlimit, end);
+                strcat(atlimit, "; ");
+                n = (int)strlen(atlimit);
+                memset(atlimit + n, 'x', (size_t)len - 2);
+                atlimit[n + len - 2] = '\0';
+                strcat(atlimit, end);
+                strcat(atlimit, "sound");
+                strcat(atlimit, end);
+                strcat(atlimit, "label X");
+                strcat(atlimit, end);
+                strcat(atlimit, "brief X");
+                strcat(atlimit, end);
+                strcat(atlimit, "SKIDCFGEND");
+                strcat(atlimit, end);
+
+                sprintf(what, "a line of %d characters ending %s", len, how);
+                if (len <= DRV_BLK_LINE_MAX) {
+                    expect(what, drv_blk_parse(&b, atlimit) == NULL, 1);
+                    /* The span reader walks the same lines, so a limit it
+                     * disagreed with would send the scan to the wrong offset
+                     * for the next block. */
+                    expect("and the span reader agrees it is a whole block",
+                           (int)drv_blk_span(atlimit), (int)strlen(atlimit));
+                } else {
+                    expect_refused(what, atlimit);
+                }
+            }
+        }
+    }
+
+    /* --- how far one block reaches ---
+     *
+     * src/drvscan.c reads every block in a file and needs to know where to look
+     * for the next one. Past the end of this one: a block may quote the magic
+     * in a comment, as DRVBLOCK.md's own examples do, and starting again inside
+     * one would read the rest of it a second time as though it were another. */
+    expect("a block's span is the whole of it, terminator included",
+           (int)drv_blk_span(BLOCK_OK), (int)strlen(BLOCK_OK));
+    expect("text with no terminator in it has no span",
+           (int)drv_blk_span("SKIDCFGDRV01\nsound\n"), 0);
+    {
+        static const char QUOTED[] = "SKIDCFGDRV01\n"
+                                     "sound\n"
+                                     "label X\n"
+                                     "brief X\n"
+                                     "help this block says SKIDCFGEND here\n"
+                                     "SKIDCFGEND\n";
+
+        expect("and a block quoting the terminator ends where it really ends",
+               (int)drv_blk_span(QUOTED), (int)strlen(QUOTED));
+    }
 }
 
 /* ------------------------------------------------------------- merging --
@@ -965,12 +1151,59 @@ static const struct drv_opt *last_of(const struct drv_tab *t)
     return &t->opt[t->n - 1];
 }
 
+/* A video row this build has, and the mode a block would have to name to mean
+ * the same one. labelled picks between the two kinds: a row on the menu, and a
+ * row that is in the table with no label, which the shipped table has one of in
+ * the VGA entry and test/drvmin.h has none of. Returns its position, or -1.
+ *
+ * Both are asked of the table rather than written down, because what rows a
+ * build has is the build's business: naming MCGA here passed against the
+ * shipped table and failed against the cut down one, which does not have it.
+ *
+ * The mode is taken out of the row's own command fragment and put into lower
+ * case, which is the second thing being checked: a block is entitled to write
+ * it in either case, because the program that reads SETUP.DAT back does not
+ * care about case either. */
+static int video_row(const struct drv_tab *t, int labelled, char *out, int max)
+{
+    int i;
+
+    for (i = 0; i < t->n; i++) {
+        const char *p;
+        int         n = 0;
+
+        if (t->opt[i].cmd == NULL || (t->opt[i].label != NULL) != labelled) {
+            continue;
+        }
+        p = strstr(t->opt[i].cmd, "/u ");
+        if (p == NULL) {
+            continue;
+        }
+        for (p += 3; *p == ' '; p++) {
+            /* the space after /u may be more than one */
+        }
+        while (*p != '\0' && n < max - 1) {
+            out[n++] = (*p >= 'A' && *p <= 'Z') ? (char)(*p - 'A' + 'a') : *p;
+            p++;
+        }
+        while (n > 0 && out[n - 1] == ' ') {
+            n--;
+        }
+        out[n] = '\0';
+        return i;
+    }
+    return -1;
+}
+
 static void check_merge(void)
 {
     const struct drv_tab *st;
     const struct drv_tab *vt;
-    const struct drv_opt *o;
+    const struct drv_opt *o = NULL;
+    char                  mode[DRV_MODE_MAX + 1];
+    char                  blk[160];
     int                   before;
+    int                   already;
     int                   i;
 
     printf("\n--    merging what a scan found\n");
@@ -982,27 +1215,49 @@ static void check_merge(void)
            st->n == drv_sound.n, 1);
     expect("and nothing is skipped", drv_scan_skipped(), 0);
 
-    drv_scan_offer(BLOCK_OK, "SC15.DRV");
-    expect("a good block becomes a row", st->n, before + 1);
-    expect("and nothing is skipped", drv_scan_skipped(), 0);
+    /* Whether this build already offers what SC15.DRV would, which is exactly
+     * what SKIDCFG_SC55 does: it compiles the row in. Two rows cannot both
+     * write /ssc on line 2, so which of the two things happens next depends on
+     * the table, and both are worth checking. */
+    already = 0;
+    for (i = 0; i < st->n; i++) {
+        if (st->opt[i].cmd != NULL && strcmp(st->opt[i].cmd, "/ssc ") == 0) {
+            already = 1;
+        }
+    }
 
-    o = last_of(st);
-    expect_str("its switch comes from the filename and nowhere else", o->cmd,
-               "/ssc ");
-    expect_str("its brief has the brackets skidcfg adds", o->brief, "(SC-55)");
-    expect_str("and the file it came from is remembered", o->from, "SC15.DRV");
-    expect("its index is above every index the original shipped with",
-           o->index >= 6, 1);
-    expect("and is one nothing else in the table claims",
-           drv_find(st, o->index) == o, 1);
+    drv_scan_offer(BLOCK_OK, "SC15.DRV");
+    if (already) {
+        expect("a block for a driver the build already offers adds no row",
+               st->n, before);
+        expect("and is skipped with a reason", drv_scan_skipped(), 1);
+    } else {
+        expect("a good block becomes a row", st->n, before + 1);
+        expect("and nothing is skipped", drv_scan_skipped(), 0);
+
+        o = last_of(st);
+        expect_str("its switch comes from the filename and nowhere else",
+                   o->cmd, "/ssc ");
+        expect_str("its brief has the brackets skidcfg adds", o->brief,
+                   "(SC-55)");
+        expect_str("and the file it came from is remembered", o->from,
+                   "SC15.DRV");
+        expect("its index is above every index the original shipped with",
+               o->index >= 6, 1);
+        expect("and is one nothing else in the table claims",
+               drv_find(st, o->index) == o, 1);
+    }
 
     /* A second driver must not be handed the first one's number. */
+    drv_scan_reset();
+    st = drv_scan_sound();
     drv_scan_offer("SKIDCFGDRV01\nsound\nlabel Gravis\nbrief GUS\n"
                    "SKIDCFGEND\n",
                    "GU15.DRV");
-    expect("a second block becomes a second row", st->n, before + 2);
+    expect("a block for a switch nothing else has becomes a row", st->n,
+           before + 1);
     expect_str("with its own switch", last_of(st)->cmd, "/sgu ");
-    expect("and its own index", last_of(st)->index != o->index, 1);
+    expect("above the stock range", last_of(st)->index >= 6, 1);
 
     /* A digit is as good as a letter in the two characters, which is measured:
      * M015.DRV answers to /sm0. It matters because two characters is all there
@@ -1109,8 +1364,290 @@ static void check_merge(void)
     expect("and the ones with nowhere to go are named rather than dropped",
            drv_scan_skipped() > 0, 1);
 
+    /* More refusals than the list has room for. The last line becomes a count
+     * of what did not fit rather than one more name, because a list that
+     * simply stopped reads exactly like a list with nothing more to say. */
+    drv_scan_reset();
+    for (i = 0; i < DRV_SCAN_SKIP_MAX + 4; i++) {
+        char name[16];
+
+        sprintf(name, "BAD%d.DRV", i);
+        drv_scan_offer(BLOCK_OK, name);
+    }
+    expect("the skipped list stops at its size", drv_scan_skipped(),
+           DRV_SCAN_SKIP_MAX);
+    expect("and its last line counts the rest rather than being one of them",
+           strncmp(drv_scan_skip_why(DRV_SCAN_SKIP_MAX - 1), "and ", 4) == 0,
+           1);
+
+    /* --- what counts as the same row ---
+     *
+     * Case is not identity. take_tokens() in src/setup.c matches line 2 with
+     * the case folded, so a block writing a mode in lower case is naming the
+     * mode the table already has. A row of its own would write one index and
+     * read back another's. */
+    drv_scan_reset();
+    vt = drv_scan_video();
+    i = video_row(vt, 1, mode, (int)sizeof mode);
+    expect("this build offers a video mode at all", i >= 0, 1);
+    if (i < 0) {
+        return;
+    }
+    before = vt->n;
+    sprintf(blk,
+            "SKIDCFGDRV01\nvideo\nmode %s\nlabel Another one\n"
+            "brief another\nSKIDCFGEND\n",
+            mode);
+    drv_scan_offer(blk, "LOAD.EXE");
+    expect("a mode already on the menu, written in the other case, adds no row",
+           vt->n, before);
+    expect("and is skipped with a reason", drv_scan_skipped(), 1);
+    expect_str("while the row it names keeps the label it had",
+               vt->opt[i].label, drv_video.opt[i].label);
+
+    /* The exception, and the useful one: a row that is in the table and not on
+     * the menu is not a row already taken, it is a label nobody has supplied
+     * yet. The original's VGA entry is exactly that. Filling it in keeps the
+     * index a SETUP.DAT written years ago would already name. */
+    drv_scan_reset();
+    vt = drv_scan_video();
+    i = video_row(vt, 0, mode, (int)sizeof mode);
+    if (i < 0) {
+        printf("ok    this build's video table has no dormant row to fill\n");
+    } else {
+        int was = vt->opt[i].index;
+
+        before = vt->n;
+        sprintf(blk,
+                "SKIDCFGDRV01\nvideo\nmode %s\ndisk B\nlabel VGA graphics\n"
+                "brief VGA\nSKIDCFGEND\n",
+                mode);
+        drv_scan_offer(blk, "LOAD.EXE");
+        expect("a block naming a row that has no label adds no row", vt->n,
+               before);
+        expect("and is not skipped", drv_scan_skipped(), 0);
+        expect_str("it fills in the label the row never had", vt->opt[i].label,
+                   "VGA graphics");
+        expect_str("and the brief, with the brackets skidcfg adds",
+                   vt->opt[i].brief, "(VGA)");
+        expect_str("and the disk, which is the whole of line 4",
+                   vt->opt[i].disk, "disk 'B'");
+        expect("while the index stays the one an old SETUP.DAT would name",
+               vt->opt[i].index, was);
+        expect("and the row is on the menu now that it has a label",
+               vt->opt[i].label != NULL, 1);
+    }
+
     drv_scan_reset();
 }
+
+/* ----------------------------------------------------------- the scan itself
+ *
+ * Everything above reaches src/drvscan.c through drv_scan_offer(), which is the
+ * per-file step with the directory taken out. This is the other half: the
+ * finding of the files and the reading of the blocks out of them, which is
+ * _dos_findfirst and 8.3 names and runs on DOS only.
+ *
+ * It is worth the trouble for one reason above the rest. int is 16 bits on both
+ * compilers this ships from and 32 on every host compiler, so a file offset
+ * kept in an int is correct everywhere it can be checked cheaply and wrong on
+ * the machine the program is for: past 32767 it comes back negative, and a
+ * block beyond that mark was found, read, and then dropped as though the file
+ * had ended. Four hosted compilers, two sanitisers and cppcheck all passed it.
+ * So the carrier here is deliberately larger than 32 KB with the blocks past
+ * the mark, and this check exists to be run by the 16-bit build.
+ */
+#ifdef ON_DOS
+
+static const char VBLOCK1[] = "SKIDCFGDRV01\n"
+                              "; a comment quoting SKIDCFGDRV01 at it\n"
+                              "video\n"
+                              "mode SVGA\n"
+                              "disk B\n"
+                              "label SVGA graphics\n"
+                              "brief SVGA\n"
+                              "SKIDCFGEND\n";
+
+static const char VBLOCK2[] = "SKIDCFGDRV01\n"
+                              "video\n"
+                              "mode XGA\n"
+                              "label XGA graphics\n"
+                              "brief XGA\n"
+                              "SKIDCFGEND\n";
+
+#    define FILLER 40000L
+
+/* Whether any skipped line says this, in either column: the reasons are
+ * sentences and the files are names, and a substring is the readable way to ask
+ * about both. */
+static int skip_saying(const char *needle)
+{
+    int i;
+
+    for (i = 0; i < drv_scan_skipped(); i++) {
+        if (strstr(drv_scan_skip_why(i), needle) != NULL ||
+            strstr(drv_scan_skip_file(i), needle) != NULL) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* n blocks in one LOAD.EXE, to find out where the scan stops reading them. */
+static void carrier_of(int blocks)
+{
+    FILE *f = fopen("LOAD.EXE", "wb");
+    int   i;
+
+    if (f == NULL) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+    for (i = 0; i < blocks; i++) {
+        fprintf(f,
+                "SKIDCFGDRV01\nvideo\nmode M%d\nlabel Mode %d\n"
+                "brief M%d\nSKIDCFGEND\n",
+                i, i, i);
+    }
+    fclose(f);
+}
+
+static void check_scan(void)
+{
+    const struct drv_tab *vt;
+    FILE                 *f;
+    long                  i;
+    int                   before = drv_video.n;
+
+    printf("\n--    the directory scan\n");
+
+    f = fopen("LOAD.EXE", "wb");
+    if (f == NULL) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+    for (i = 0; i < FILLER; i++) {
+        fputc('.', f);
+    }
+    fputs(VBLOCK1, f);
+    fputs(VBLOCK2, f);
+    if (fclose(f) != 0) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+
+    drv_scan();
+    vt = drv_scan_video();
+    expect("both blocks in a carrier are read, not just the first", vt->n,
+           before + 2);
+    expect("and nothing was skipped", drv_scan_skipped(), 0);
+    for (i = 0; i < drv_scan_skipped(); i++) {
+        printf("      %s: %s\n", drv_scan_skip_file((int)i),
+               drv_scan_skip_why((int)i));
+    }
+    if (vt->n == before + 2) {
+        expect_str("the first block's mode, found past 32767 bytes in",
+                   vt->opt[before].cmd, "load.exe /u SVGA ");
+        expect_str("and its disk", vt->opt[before].disk, "disk 'B'");
+        expect_str("the second block, which the first must not have hidden",
+                   vt->opt[before + 1].cmd, "load.exe /u XGA ");
+        expect("their indices differ",
+               vt->opt[before].index != vt->opt[before + 1].index, 1);
+    }
+
+    /* Where it stops reading blocks out of one file, and the difference
+     * between reporting that and claiming it. DRV_ROWS_MAX blocks is the whole
+     * menu and is not a cutoff; the file was read to the end. One more is, and
+     * has to say so. */
+    carrier_of(DRV_ROWS_MAX);
+    drv_scan();
+    expect("a carrier with exactly a menu's worth of blocks is not cut off",
+           skip_saying("more blocks"), 0);
+    expect("and the list did not overflow, so that means what it says",
+           drv_scan_skipped() < DRV_SCAN_SKIP_MAX, 1);
+
+    carrier_of(DRV_ROWS_MAX + 1);
+    drv_scan();
+    /* Either the cutoff line is there or the list filled up and said how many
+     * it could not name. Both are the promise being kept; which one happens
+     * depends on how many of the blocks this build's table had room for, and
+     * that is the build's business. */
+    expect("one block more than that is reported",
+           skip_saying("more blocks") ||
+               drv_scan_skipped() == DRV_SCAN_SKIP_MAX,
+           1);
+
+    remove("LOAD.EXE");
+    drv_scan_reset();
+}
+
+/* More .DRV files than the scan can hold.
+ *
+ * Two things are being asked. The count has to be the real number past the
+ * limit rather than a note about the first file that would not fit, which is
+ * what the exact figure below is for.
+ *
+ * The other is that the files it keeps are the same files on every machine.
+ * DOS hands names back in directory order, which on a FAT volume is the order
+ * they were made, so a scan that stops at the first overflow keeps whichever
+ * ones it happened to see first and two directories holding the same drivers
+ * draw different menus. The one file carrying a block is made first and sorts
+ * last, which is the shape that catches that.
+ *
+ * Only the count bites on a host, and the reader should know it: a drive
+ * mounted on a host directory enumerates in name order, so creation order is
+ * invisible there and either rule keeps the same set. The ordering half needs
+ * a real FAT volume, which is the machine this is for.
+ */
+#    define EXTRA_DRV 2
+
+static void check_directory(void)
+{
+    /* SCAN_FILES less the slot LOAD.EXE is owed. Written down rather than
+     * shared, because it is private to src/drvscan.c and has no business
+     * being a header's. A build that changes it makes this check fail rather
+     * than pass quietly: too few files and there is no overflow to count. */
+    int  keep = 33 - 1;
+    int  i;
+    char name[32];
+
+    printf("\n--    a directory with more drivers than the scan can hold\n");
+
+    /* Created first and sorting last, so being kept would mean order decided
+     * it. It is named as a driver no switch could reach, which is a refusal
+     * with the filename in it: that is how the test sees which files were
+     * read. */
+    sprintf(name, "T%03d.DRV", keep + EXTRA_DRV - 1);
+    write_text(name, "");
+    for (i = 0; i < keep + EXTRA_DRV - 1; i++) {
+        sprintf(name, "T%03d.DRV", i);
+        write_text(name, "");
+    }
+    sprintf(name, "T%03d.DRV", 0);
+    write_text(name, BLOCK_OK);
+    sprintf(name, "T%03d.DRV", keep + EXTRA_DRV - 1);
+    write_text(name, BLOCK_OK);
+
+    drv_scan();
+    sprintf(name, "%d of them past the", EXTRA_DRV);
+    expect("every file past the limit is counted, not just the first",
+           skip_saying(name), 1);
+    expect("a block in the file that sorts first is read", skip_saying("T000"),
+           1);
+    expect("and one in the file that sorts last is not, whenever it was made",
+           skip_saying("T033"), 0);
+
+    for (i = 0; i < keep + EXTRA_DRV; i++) {
+        sprintf(name, "T%03d.DRV", i);
+        remove(name);
+    }
+    drv_scan_reset();
+}
+
+#endif /* ON_DOS */
 
 /* ------------------------------------------------- drivers that are not there
  *
@@ -1232,14 +1769,168 @@ static void check_missing(void)
     drv_scan_reset();
 }
 
+/* ------------------------------------------------------------- installing --
+ *
+ * What src/install.c makes of a directory before it moves anything. Every
+ * refusal that file has rests on this: /I and /U each look at the state first
+ * and do nothing at all unless it is one they can undo.
+ *
+ * Nothing here renames a real SETUP.EXE. The two files are written by this
+ * check, and what decides the state is whether the marker src/version.h
+ * defines is inside them, which is the same test the program makes of a real
+ * one.
+ */
+static void inst_files(const char *exe, const char *org)
+{
+    remove("SETUP.EXE");
+    remove("SETUP.ORG");
+    if (exe != NULL) {
+        write_text("SETUP.EXE", exe);
+    }
+    if (org != NULL) {
+        write_text("SETUP.ORG", org);
+    }
+}
+
+static void check_install(void)
+{
+    /* Long enough that the marker is not the whole file, the way it is not in
+     * a real one. The bytes around it do not matter. */
+    static const char OURS[] = "MZ...." SKIDCFG_MARK "....";
+    static const char THEIRS[] = "MZ.... some other setup program ....";
+
+    printf("\n--    what state a game directory is in\n");
+
+    inst_files(NULL, NULL);
+    expect("no SETUP.EXE and no SETUP.ORG", (int)inst_state(),
+           (int)INST_ABSENT);
+
+    inst_files(THEIRS, NULL);
+    expect("the original, untouched", (int)inst_state(), (int)INST_NONE);
+
+    inst_files(OURS, THEIRS);
+    expect("installed, with the original put aside", (int)inst_state(),
+           (int)INST_DONE);
+
+    inst_files(THEIRS, THEIRS);
+    expect("a SETUP.ORG this program did not put there", (int)inst_state(),
+           (int)INST_FOREIGN);
+
+    /* The two that exist to be refused. Both are directories somebody has
+     * been in by hand, and in both the original is not here under any name,
+     * so there is nothing for /U to put back. */
+    inst_files(OURS, NULL);
+    expect("this program under the original's name, with no original",
+           (int)inst_state(), (int)INST_UNSURE);
+
+    inst_files(OURS, OURS);
+    expect("both names holding this program", (int)inst_state(),
+           (int)INST_ORG_OURS);
+
+    /* And the marker is found wherever it sits, since a real one is at
+     * whatever offset the linker chose. */
+    inst_files("....", NULL);
+    expect("a file without the marker is not this program", (int)inst_state(),
+           (int)INST_NONE);
+
+    inst_files(NULL, NULL);
+}
+
+/* ------------------------------------------------------- the safety catch --
+ *
+ * This program creates and removes files, and some of them are named after the
+ * game's own. It has to be: what check_missing() proves is that a row whose
+ * file is absent comes off the menu, and the only way to prove it is to make a
+ * file called PC15.DRV and then take it away again.
+ *
+ * Run in a Stunts directory, that truncates CGA.COD to nothing and then
+ * deletes it, along with the other three overlays and all four drivers. A
+ * quarter of a megabyte of the game, gone, from a program whose whole purpose
+ * is preserving it. The release ships this binary beside SKIDCFG.EXE, so a
+ * reader who unpacks the archive into their game directory and runs the
+ * checker is exactly the person it would happen to.
+ *
+ * So it refuses to start anywhere it might do that. Every name it could touch
+ * is listed and looked for first, and finding any of them is a refusal rather
+ * than a question. That is the whole guard: it needs no directory calls, which
+ * differ between the two DOS compilers, and it cannot be got wrong by a test
+ * added later as long as the name goes in the list.
+ */
+static const char *const SCRATCH[] = {"SCTEST.DAT", "SCTEST.$N$", "SCTEST.$O$",
+                                      "SETUP.EXE",  "SETUP.ORG",  "SETUP.$$$",
+                                      "SVGA.COD",   "LOAD.EXE"};
+
+static const char *in_the_way(void)
+{
+    const struct drv_tab *t;
+    int                   i;
+
+#ifdef ON_DOS
+    {
+        /* On DOS the scan checks read the directory, so the checks that feed
+         * them write drivers into it: three dozen of them, named after nothing
+         * in particular. Listing each would be a list nobody maintains, and a
+         * directory holding any .DRV at all is one this has no business
+         * writing into. Stronger than the table below and it costs a
+         * findfirst. */
+        struct find_t f;
+
+        if (_dos_findfirst("*.DRV", _A_NORMAL, &f) == 0) {
+            static char found[16];
+
+            strncpy(found, f.name, sizeof found - 1);
+            found[sizeof found - 1] = '\0';
+            return found;
+        }
+    }
+#endif
+    for (i = 0; i < (int)(sizeof SCRATCH / sizeof SCRATCH[0]); i++) {
+        if (file_exists(SCRATCH[i])) {
+            return SCRATCH[i];
+        }
+    }
+    /* Both tables, because a row's needs is the name this would write. The
+     * video ones are derived rather than declared, so they are read back from
+     * the scanner rather than from drvtab.h. Neither call touches a file. */
+    t = drv_scan_sound();
+    for (i = 0; i < t->n; i++) {
+        if (t->opt[i].needs != NULL && file_exists(t->opt[i].needs)) {
+            return t->opt[i].needs;
+        }
+    }
+    t = drv_scan_video();
+    for (i = 0; i < t->n; i++) {
+        if (t->opt[i].needs != NULL && file_exists(t->opt[i].needs)) {
+            return t->opt[i].needs;
+        }
+    }
+    return NULL;
+}
+
 int main(void)
 {
+    const char *found = in_the_way();
+
+    if (found != NULL) {
+        printf("SKIDCHK writes and removes files named after the game's own,\n"
+               "and %s is already here. It will not run in this\n"
+               "directory, because doing so would destroy that file.\n\n"
+               "Run it in an empty directory. It needs no game data.\n",
+               found);
+        return 2;
+    }
+
     check_version();
     check_tables();
     check_help();
     check_file();
     check_block();
     check_merge();
+    check_install();
+#ifdef ON_DOS
+    check_scan();
+    check_directory();
+#endif
     check_missing();
 #ifdef DRV_TABLE_STOCK
     check_stock();

@@ -20,11 +20,12 @@
 
 /* Where things stand in the current directory. */
 enum inst_state {
-    INST_NONE,    /* a real SETUP.EXE, untouched */
-    INST_DONE,    /* SETUP.EXE is skidcfg, SETUP.ORG is the original */
-    INST_ABSENT,  /* no SETUP.EXE at all, so nothing to take over */
-    INST_FOREIGN, /* SETUP.ORG exists but SETUP.EXE is not skidcfg */
-    INST_UNSURE   /* something could not be read */
+    INST_NONE,     /* a real SETUP.EXE, untouched */
+    INST_DONE,     /* SETUP.EXE is skidcfg, SETUP.ORG is the original */
+    INST_ABSENT,   /* no SETUP.EXE at all, so nothing to take over */
+    INST_FOREIGN,  /* SETUP.ORG exists but SETUP.EXE is not skidcfg */
+    INST_ORG_OURS, /* both are skidcfg, so the original is not here */
+    INST_UNSURE    /* SETUP.EXE is skidcfg and there is no SETUP.ORG */
 };
 
 enum inst_state inst_state(void);

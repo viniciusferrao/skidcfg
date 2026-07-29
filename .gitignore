@@ -8,10 +8,12 @@
 /selfcheck.exe
 /selfcheck-sc55
 /drvtab.bak
-/SCCHECK.EXE
+/SKIDCHK.EXE
 *.o
 *.obj
 *.OBJ
 *.map
 *.MAP
 
+/README.TXT
+/LICENSE.TXT

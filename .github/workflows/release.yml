@@ -35,19 +35,20 @@ jobs:
         shell: cmd
         run: |
           call WCLBUILD.BAT
+          if errorlevel 1 exit /b 1
           if not exist SKIDCFG.EXE exit /b 1
-          if not exist SCCHECK.EXE exit /b 1
+          if not exist SKIDCHK.EXE exit /b 1
 
       - name: Report
         shell: bash
-        run: ls -l SKIDCFG.EXE SCCHECK.EXE && sha256sum SKIDCFG.EXE SCCHECK.EXE
+        run: ls -l SKIDCFG.EXE SKIDCHK.EXE && sha256sum SKIDCFG.EXE SKIDCHK.EXE
 
       - uses: actions/upload-artifact@v4
         with:
           name: dos
           path: |
             SKIDCFG.EXE
-            SCCHECK.EXE
+            SKIDCHK.EXE
           if-no-files-found: error
 
   # The shipped binary's own self-check, run against the shipped binary.
@@ -70,7 +71,7 @@ jobs:
         run: |
           set -e
           mkdir -p run out
-          cp dos/SCCHECK.EXE run/
+          cp dos/SKIDCHK.EXE run/
           cat > dosbox.conf <<'EOF'
           [sdl]
           output = surface
@@ -78,7 +79,7 @@ jobs:
           mount c run
           mount l out
           c:
-          SCCHECK > L:\CHK.TXT
+          SKIDCHK > L:\CHK.TXT
           exit
           EOF
           SDL_VIDEODRIVER=dummy dosbox -conf dosbox.conf -exit || true
@@ -135,21 +136,41 @@ jobs:
           fi
           file README.TXT
 
-      # LICENSE is not optional: MIT asks that the notice travel with every
+      # A licence is not optional: MIT asks that the notice travel with every
       # copy, and a binary is a copy.
       #
-      # DRVBLOCK.md deliberately does not travel. Its tables do not survive
-      # being flattened to 78 columns, and the reader who wants it is writing a
+      # SKIDCHK.EXE deliberately does not travel, though it is built and run
+      # above. It is a developer's test rather than a user's tool: it reports a
+      # count of checks that means nothing to somebody who wants a setup
+      # screen, and it is the one binary here that writes and removes files
+      # named after the game's own. It refuses to run anywhere those files
+      # already exist, so shipping it would be safe, but an archive people
+      # unpack into a Stunts directory is not where it belongs.
+      #
+      # DRVBLOCK.md does not travel either. Its tables do not survive being
+      # flattened to 78 columns, and the reader who wants it is writing a
       # driver, which means a compiler and a browser and no trouble finding the
       # repository. The README in here says where it is.
+      # LICENSE.TXT rather than LICENSE, and generated rather than copied. The
+      # repository's file is UTF-8 with LF, which a DOS reader gets as one
+      # run-on line with two wrong glyphs in the author's name. The Makefile
+      # rule converts it and asserts the result, so a letter it cannot map
+      # stops the release instead of shipping the mojibake.
       - name: Assemble
         run: |
           set -e
+          make LICENSE.TXT
           mkdir -p stage
-          cp LICENSE README.TXT bin/SKIDCFG.EXE bin/SCCHECK.EXE stage/
-          chmod +x stage/SKIDCFG.EXE stage/SCCHECK.EXE
-          (cd stage && zip -X -9 "../${{ steps.v.outputs.doszip }}" \
-                           LICENSE README.TXT SKIDCFG.EXE SCCHECK.EXE)
+          cp LICENSE.TXT README.TXT bin/SKIDCFG.EXE stage/
+          chmod +x stage/SKIDCFG.EXE
+          # -0 stores rather than deflates, and that is deliberate. Deflate
+          # arrived with PKZIP 2.04g in 1993; PKUNZIP 1.1, which is what a
+          # machine of the game's own vintage has, cannot read a deflated
+          # member at all. The whole archive is a few tens of kilobytes either
+          # way, so the compression buys nothing worth an extractor the reader
+          # may not have. -X keeps the extra fields out.
+          (cd stage && zip -X -0 "../${{ steps.v.outputs.doszip }}" \
+                           LICENSE.TXT README.TXT SKIDCFG.EXE)
           sha256sum "${{ steps.v.outputs.doszip }}" > SHA256SUMS
 
       # Verification comes free twice over: SHA256SUMS for a modern machine, and

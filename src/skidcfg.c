@@ -590,11 +590,26 @@ static int option(int argc, char **argv)
         fprintf(stderr, "%s: one option at a time.\n", prog);
         return 2;
     }
-    if (opt_is(a, "INSTALL")) {
-        return inst_install(argv[0]);
-    }
-    if (opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
+    /* Taking SETUP.EXE's name is a DOS thing to do, and only a DOS build has
+     * any business doing it. A hosted build is a test artifact: it draws
+     * nothing, reads no keyboard, and copying one over SETUP.EXE would leave a
+     * game directory holding an executable the machine cannot run, under the
+     * name of the one it could. Refused before anything is renamed. */
+    if (opt_is(a, "INSTALL") || opt_is(a, "UNINSTALL") || opt_is(a, "REMOVE")) {
+#ifdef SKIDCFG_DOS
+        if (opt_is(a, "INSTALL")) {
+            return inst_install(argv[0]);
+        }
         return inst_uninstall();
+#else
+        fprintf(stderr,
+                "%s: this is a hosted build, for compiling and testing the\n"
+                "sources. It cannot take SETUP.EXE's place, because what it\n"
+                "would leave there is not a DOS program. Build with\n"
+                "DOSBUILD.BAT or WCLBUILD.BAT and use that.\n",
+                prog);
+        return 2;
+#endif
     }
     if (opt_is(a, "DRIVERS")) {
         return drivers();
@@ -617,6 +632,7 @@ int main(int argc, char **argv)
     const char  *helps[MAIN_N];
     int          cur = 0;
     int          written = 0;
+    int          readfail = 0;
 
     if (argc > 1) {
         return option(argc, argv);
@@ -626,7 +642,10 @@ int main(int argc, char **argv)
      * tables and a driver that describes itself has to be in them by then. */
     drv_scan();
 
-    setup_read(&s, SETUP_PATH);
+    /* Kept, because a file that would not read is a file this must not write.
+     * The screen is the original's and has no row to say so on, so it is said
+     * at the end, where the write would have been. */
+    readfail = (setup_read(&s, SETUP_PATH) == SETUP_BAD_READ);
 
     labels[MAIN_VIDEO] = "Video display";
     labels[MAIN_SOUND] = "Sound option";
@@ -669,11 +688,32 @@ int main(int argc, char **argv)
     }
     erase(&MAIN, MAIN_N);
 
+    /* A file that is there and could not be read is the one case where Exit
+     * writes nothing. What is in that file is unknown, and the defaults this
+     * would put over it are settings nobody chose: the old ones might be
+     * perfectly good and merely unreadable this once, on a disk worth another
+     * try rather than a rewrite. Nothing is there to lose on a machine with no
+     * SETUP.DAT at all, so that one is written as always. */
+    if (written && readfail) {
+        scrn_close();
+        fprintf(stderr,
+                SKIDCFG_NAME ": %s is here but could not be read, so it has\n"
+                             "not been written back. Nothing has changed.\n",
+                SETUP_PATH);
+        return 1;
+    }
     if (written && setup_write(&s, SETUP_PATH) != 0) {
         scrn_close();
-        fprintf(stderr, SKIDCFG_NAME ": cannot write %s\n", SETUP_PATH);
+        fprintf(stderr, SKIDCFG_NAME ": cannot write %s: %s.\n", SETUP_PATH,
+                setup_why());
         return 1;
     }
     report(&s, written);
+    /* After report(), which is what puts the screen away: a write that
+     * succeeded and left something behind has a line to say, and it belongs on
+     * the DOS prompt rather than over the setup screen. */
+    if (written && setup_why()[0] != '\0') {
+        fprintf(stderr, SKIDCFG_NAME ": %s.\n", setup_why());
+    }
     return 0;
 }

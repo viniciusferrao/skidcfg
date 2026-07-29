@@ -13,7 +13,7 @@ rem CI knows about, which is the thing worth avoiding: this file is here in the
 rem tree, README.md names it, and it builds the same sources with no #ifdef of
 rem its own.
 rem
-rem   WCLBUILD          SKIDCFG.EXE and SCCHECK.EXE
+rem   WCLBUILD          SKIDCFG.EXE and SKIDCHK.EXE
 rem
 rem Set WATCOM to your installation before running, or edit the default here.
 
@@ -33,12 +33,12 @@ rem every compile line before the first #include fails.
 if exist %WCLBIN%\WCL.EXE goto havewcl
 echo WCLBUILD: no WCL.EXE under %WCLBIN%
 echo Set WATCOM to your Open Watcom 1.9 installation.
-goto end
+goto badenv
 :havewcl
 if exist %WATCOM%\H\STDIO.H goto haveinc
 echo WCLBUILD: no STDIO.H under %WATCOM%\H
 echo This installation has tools but no headers.
-goto end
+goto badenv
 :haveinc
 
 set PATH=%WCLBIN%;%PATH%
@@ -63,7 +63,7 @@ rem -k8192 is the stack, and it is the same 8 KB DOSBUILD.BAT asks the Microsoft
 rem linker for. The default is tight once argv and a few automatic buffers are
 rem on it, and running out is not diagnosed: the program stops mid printf with a
 rem half flushed buffer, which reads like a failed check rather than a crash.
-rem That is exactly how it presented the first time this was built.
+rem Leave it out and that is what a broken build looks like.
 wcl -bt=dos -ml -0 -w3 -k8192 *.c -fe=..\SKIDCFG.EXE
 if errorlevel 1 goto fail
 del *.obj
@@ -72,20 +72,39 @@ rem The self-check, from the same sources the program is built from. It needs no
 rem game data and no screen, so a release can run it against the binary it is
 rem about to ship. skidcfg.c is left out because selfchk.c brings its own
 rem main().
-wcl -bt=dos -ml -0 -w3 -k8192 -i=. ..\test\selfchk.c drivers.c drvblk.c ^
-    drvscan.c setup.c -fe=..\SCCHECK.EXE
+rem
+rem One physical line, however long it looks. The caret is cmd.exe's line
+rem continuation and COMMAND.COM has no such thing: it reads a batch file one
+rem line at a time, so the caret would go to WCL as an argument and the next
+rem line would be run as a command. This is 119 characters and DOS allows 128.
+wcl -bt=dos -ml -0 -w3 -k8192 -i=. ..\test\selfchk.c drivers.c drvblk.c drvscan.c setup.c install.c -fe=..\SKIDCHK.EXE
 if errorlevel 1 goto fail
 del *.obj
 cd ..
 
 echo.
-echo Built SKIDCFG.EXE and SCCHECK.EXE.  Check the build with:
-echo     SCCHECK
+echo Built SKIDCFG.EXE and SKIDCHK.EXE. Check the build with:
+echo     SKIDCHK
+if "%OS%"=="Windows_NT" exit /b 0
 goto end
 
+rem An exit code where there is one to be had, so a caller can tell without
+rem looking for the files or reading the console.
+rem
+rem Only under cmd.exe. This script picks BINW on a DOS host and BINNT on
+rem Windows, so it is meant to run under COMMAND.COM as well, and COMMAND.COM
+rem has no "exit /b": there it would exit the shell rather than the batch file,
+rem and under DOSBox it closes the emulator on a successful build. So the exit
+rem code is conditional and the message is not. DOSBUILD.BAT is DOS only and
+rem says the same thing where it would have used one.
 :fail
 del *.obj
 cd ..
 echo Build failed.
+if "%OS%"=="Windows_NT" exit /b 1
+goto end
+
+:badenv
+if "%OS%"=="Windows_NT" exit /b 1
 
 :end

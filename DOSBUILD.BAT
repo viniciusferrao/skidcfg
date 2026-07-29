@@ -16,7 +16,8 @@ set INCLUDE=%MSCDIR%\INCLUDE
 set LIB=%MSCDIR%\LIB
 if "%TMP%"=="" set TMP=C:\
 
-rem The drivers this program offers are src\drvtab.h and nothing else.
+rem The drivers this program offers are src\drvtab.h plus whatever the drivers
+rem in the game directory say about themselves; see DRVBLOCK.md.
 rem Edit that file to change them, or for the one driver that ships switched
 rem off:
 rem     set EXTRA=/DSKIDCFG_SC55
@@ -67,15 +68,15 @@ rem in test\ so both links can use the same objects; skidcfg.obj is left out
 rem because this file brings its own main().
 cl /c /AL /W3 %EXTRA% /I. ..\test\selfchk.c
 if errorlevel 1 goto fail
-link /NOI /NOD /STACK:8192 selfchk+drivers+drvblk+drvscan+setup,..\SCCHECK.EXE,,LLIBCR+LIBH+EM;
+link /NOI /NOD /STACK:8192 selfchk+drivers+drvblk+drvscan+setup+install,..\SKIDCHK.EXE,,LLIBCR+LIBH+EM;
 if errorlevel 1 goto fail
 
 del *.obj
 cd ..
 
 echo.
-echo Built SKIDCFG.EXE and SCCHECK.EXE.  Check the build with:
-echo     SCCHECK
+echo Built SKIDCFG.EXE and SKIDCHK.EXE. Check the build with:
+echo     SKIDCHK
 echo.
 echo Then copy SKIDCFG.EXE next to LOAD.EXE and run it.
 goto done
@@ -83,5 +84,10 @@ goto done
 :fail
 cd ..
 echo BUILD FAILED
+rem An exit code as well as the words, so that whatever ran this can tell.
+rem Under COMMAND.COM there is no "exit /b", and a batch file cannot set its
+rem own errorlevel; what a caller has is this message and the absence of
+rem SKIDCFG.EXE. That is what the release workflow checks for.
+goto done
 
 :done

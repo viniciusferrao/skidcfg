@@ -26,8 +26,10 @@ without writing anything.
     /?   show this help
 
 Nothing else in the directory is touched. `/I` renames the original rather
-than replacing it, and `/U` puts the directory back exactly as it was;
-neither ever deletes `SETUP.EXE`.
+than replacing it, and `/U` puts the directory back exactly as it was; neither
+ever deletes the original setup program. What `/U` takes away is the copy of
+`SKIDCFG` that `/I` put there under the other name, and it does that by moving
+it aside first, so a failure halfway through leaves a `SETUP.EXE` either way.
 
 ## What it offers
 
@@ -50,8 +52,8 @@ neither ever deletes `SETUP.EXE`.
 
 Those are the rows a stock game has. A row appears only when the driver behind
 it is on the disk, so a Stunts missing `MT15.DRV` does not offer the MT-32:
-`LOAD.EXE` would stop with `Can't find driver!` and the game would never start.
-`SKIDCFG /D` lists what was found and what was not.
+`LOAD.EXE` would stop with `Can't find driver!` and the game would never
+start. `SKIDCFG /D` lists what was found and what was not.
 
 ## Adding a driver
 
@@ -75,10 +77,11 @@ not use and why.
 
 ## Sound Canvas
 
-[skidsc55](https://github.com/viniciusferrao/skidsc55) ships an `SC15.DRV` that
-carries such a block, so copying it into the game directory is all it takes for
-the Roland SC-55 to appear as a seventh sound option. It needs a Sound Canvas
-and not merely a General MIDI module, because the driver uses the GS sound set.
+[skidsc55](https://github.com/viniciusferrao/skidsc55) ships an `SC15.DRV`
+that carries such a block, so copying it into the game directory is all it
+takes for the Roland SC-55 to appear as a seventh sound option. It needs a
+Sound Canvas and not merely a General MIDI module, because the driver uses the
+GS sound set.
 
 There is also a build switch that compiles the row in; see
 [DEVELOP.md](DEVELOP.md). The driver file is the better way, since a row that
@@ -98,10 +101,11 @@ screen, which is what keeps four compilers reading the code.
 
 Set `MSCDIR` before `DOSBUILD.BAT`, or `WATCOM` before `WCLBUILD.BAT`.
 
-There are two DOS builds because Microsoft C 5.10 is the compiler these sources
-were written against and Open Watcom is the one a CI runner can install. The
-released binary is built with Watcom, in the open, from the tagged commit;
-`DOSBUILD.BAT` is the period build and still the one the code is shaped by.
+There are two DOS builds because Microsoft C 5.10 is the compiler these
+sources were written against and Open Watcom is the one a CI runner can
+install. The released binary is built with Watcom, in the open, from the
+tagged commit; `DOSBUILD.BAT` is the period build and still the one the code
+is shaped by.
 Neither has an `#ifdef` the other does not.
 
 ## Testing
@@ -131,7 +135,8 @@ like this to exist.
 
 MIT. See [LICENSE](LICENSE).
 
-Stunts was written by Distinctive Software and published by Brøderbund in 1990.
+Stunts was written by Distinctive Software and published by Brøderbund in
+1990.
 This program ships no game data and no game code. It does reproduce the menu
 labels and the F1 help text of `SETUP.EXE`, so that the screen reads as the
 original's; those words are Distinctive Software's and the licence above does

@@ -25,7 +25,7 @@
 #define SKIDCFG_TAGLINE \
     SKIDCFG_NAME " " SKIDCFG_VERSION ": " SKIDCFG_DESCRIPTION "\n"
 #define SKIDCFG_COPYRIGHT \
-    "Copyleft (c) " SKIDCFG_YEAR " " SKIDCFG_DEV " " SKIDCFG_MAIL "\n"
+    "Copyright (c) " SKIDCFG_YEAR " " SKIDCFG_DEV " " SKIDCFG_MAIL "\n"
 
 #define SKIDCFG_BANNER SKIDCFG_TAGLINE SKIDCFG_COPYRIGHT
 
@@ -45,7 +45,7 @@
  * typographically right in one country. LICENSE carries the accented spelling,
  * being read where UTF-8 works. */
 #define SKIDCFG_TITLE_VERSION SKIDCFG_NAME ": Version " SKIDCFG_VERSION
-#define SKIDCFG_TITLE_AUTHOR "Copyleft (c) " SKIDCFG_YEAR " " SKIDCFG_DEV
+#define SKIDCFG_TITLE_AUTHOR "Copyright (c) " SKIDCFG_YEAR " " SKIDCFG_DEV
 
 /* The blue line across row 0 of the exit screen, where SETUP.EXE puts
  * "Game Setup Program (c) 1990 DSI" and then returns to DOS without another

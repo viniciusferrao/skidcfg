@@ -61,10 +61,21 @@ static int            ready;
 static char skip_file[DRV_SCAN_SKIP_MAX][DRV_NAME_MAX];
 static char skip_why[DRV_SCAN_SKIP_MAX][WHY_MAX];
 static int  n_skip;
+static int  n_over;
 
 static void note_skip(const char *file, const char *why)
 {
-    if (n_skip >= DRV_SCAN_SKIP_MAX) {
+    /* The last slot is spent on a count rather than on one more name. The
+     * header promises that nothing is skipped silently, and a list that simply
+     * stopped would break that promise at exactly the moment there was most to
+     * say: seven names and then nothing is indistinguishable from seven names
+     * and nothing more to report. */
+    if (n_skip >= DRV_SCAN_SKIP_MAX - 1) {
+        n_over++;
+        n_skip = DRV_SCAN_SKIP_MAX;
+        skip_file[DRV_SCAN_SKIP_MAX - 1][0] = '\0';
+        sprintf(skip_why[DRV_SCAN_SKIP_MAX - 1],
+                "and %d more, which there is no room here to name", n_over);
         return;
     }
     strncpy(skip_file[n_skip], file, DRV_NAME_MAX - 1);
@@ -120,6 +131,7 @@ static void ensure(void)
     ready = 1;
     n_ext = 0;
     n_skip = 0;
+    n_over = 0;
     vtab = drv_video;
     stab = drv_sound;
 
@@ -193,6 +205,45 @@ static int switch_of(char *out, const char *name)
     return 1;
 }
 
+/* Whether two command fragments would put the same thing on line 2 of
+ * SETUP.DAT. Runs of spaces collapse and trailing ones are ignored, because
+ * the built-in fragments carry the original's spacing and a derived one
+ * carries a single space: "load.exe /u MCGA  " and "load.exe /u MCGA " are the
+ * same command however they are written.
+ *
+ * Case is ignored for the same reason, and it has to be: take_tokens() in
+ * src/setup.c matches line 2 with the case folded, so "load.exe /u mcga" and
+ * "load.exe /u MCGA" are one identity to the half of the program that reads
+ * the file back. Compare bytes here and a block writing the mode in lower case
+ * gets an index of its own, and the SETUP.DAT naming it reads back as the
+ * built-in row: one number written, another one found. The writer's rule and
+ * the reader's rule have to be the same rule. */
+static int cmd_same(const char *a, const char *b)
+{
+    for (;;) {
+        while (*a == ' ' && a[1] == ' ') {
+            a++;
+        }
+        while (*b == ' ' && b[1] == ' ') {
+            b++;
+        }
+        if (*a == ' ' && a[1] == '\0') {
+            a++;
+        }
+        if (*b == ' ' && b[1] == '\0') {
+            b++;
+        }
+        if (lower(*a) != lower(*b)) {
+            return 0;
+        }
+        if (*a == '\0') {
+            return 1;
+        }
+        a++;
+        b++;
+    }
+}
+
 /* Turn a read block into a row. Everything that could fail has failed in
  * drvblk.c already, except the things that need the file it came from and the
  * table it is joining. */
@@ -201,6 +252,7 @@ static const char *add(struct drv_blk *b, const char *name)
     struct drv_tab *t = b->video ? &vtab : &stab;
     struct drv_opt *opt = b->video ? vopt : sopt;
     struct ext     *e;
+    int             i;
 
     if (!(b->video ? grow_video : grow_sound)) {
         return "this build's own table is too big to add to";
@@ -233,6 +285,43 @@ static const char *add(struct drv_blk *b, const char *name)
         e->disk[8] = '\0';
     } else if (!switch_of(e->cmd, name)) {
         return "its name is not XX15.DRV, so no switch could reach it";
+    }
+
+    /* Two rows that write the same line 2 cannot both work. Line 2 is what
+     * identifies a driver when the file is read back, and setup.c returns the
+     * first row that matches it, so choosing the second would write one index
+     * and read back the other. The reachable case is a build that compiled the
+     * SC-55 row in and then found SC15.DRV describing itself.
+     *
+     * A row that is in the table and not on the menu is the exception, and the
+     * useful one. The original's VGA entry is exactly that: it has an index and
+     * a command string and no label, because no retail release ships the files
+     * for it. A block naming that mode is not a second row, it is the label the
+     * row has always been missing, so it fills it in and keeps the index an
+     * existing SETUP.DAT would already name. */
+    for (i = 0; i < t->n; i++) {
+        if (t->opt[i].cmd == NULL || !cmd_same(t->opt[i].cmd, e->cmd)) {
+            continue;
+        }
+        if (t->opt[i].label != NULL) {
+            return "what it selects is already on the menu";
+        }
+        opt[i].label = e->label;
+        opt[i].brief = e->brief;
+        opt[i].help = (e->help[0] != '\0') ? e->help : NULL;
+        opt[i].from = e->from;
+        /* And line 4, which a dormant row does not have and the block does.
+         * The VGA entry carries no disk because no release ships the files for
+         * it, so whoever supplies them is also the only one who can say which
+         * disk they came off. Without this the block's disk was read, checked
+         * and then dropped, and choosing the row left line 4 saying whatever it
+         * said before. What it needs is left alone: that was derived from the
+         * command fragment, which is the one this block just matched. */
+        if (b->video) {
+            opt[i].disk = e->disk;
+        }
+        n_ext++;
+        return NULL;
     }
 
     opt[t->n].index = allocate(t, b->video ? RESERVED_VIDEO : RESERVED_SOUND);
@@ -354,17 +443,35 @@ void drv_scan_offer(const char *text, const char *name)
  * and take the block itself in one piece. */
 static char scratch[4096];
 
-static int block_of(const char *path, char *out, int outmax)
+/* What block_of returns instead of an offset. Two of them, because they mean
+ * different things to the caller: no more blocks is how every file ends, and a
+ * file that would not open or would not seek is a fault worth naming. One
+ * value for both had the caller treating a failure as a block at offset zero
+ * and offering whatever the buffer still held from the file before. */
+#    define BLOCK_NONE (-1L)
+#    define BLOCK_BAD (-2L)
+
+/* long, and that is not the same decision as the int inside drv_blk_find().
+ * That one indexes a 4 KB buffer once per byte of the game and is int for the
+ * speed; this one is a position in a file. int is 16 bits on both compilers
+ * this ships from, so a block past 32767 came back negative and was read as
+ * the end of the search: a block appended to a LOAD.EXE grown past 32 KB would
+ * be found, read, and then thrown away. */
+static long block_of(const char *path, char *out, int outmax, long from)
 {
     FILE  *f = fopen(path, "rb");
-    long   base = 0; /* what scratch[0] is in the file */
-    size_t keep = 0; /* carried over from the last chunk */
+    long   base = from; /* what scratch[0] is in the file */
+    size_t keep = 0;    /* carried over from the last chunk */
     size_t mark = strlen(DRV_BLK_MAGIC);
     long   at = -1;
     size_t got;
 
     if (f == NULL) {
-        return 0;
+        return BLOCK_BAD;
+    }
+    if (from > 0 && fseek(f, from, SEEK_SET) != 0) {
+        fclose(f);
+        return BLOCK_BAD;
     }
     for (;;) {
         size_t have;
@@ -372,6 +479,15 @@ static int block_of(const char *path, char *out, int outmax)
 
         got = fread(scratch + keep, 1, sizeof scratch - keep, f);
         if (got == 0) {
+            /* Nothing read is the end of the file or a disk that would not
+             * give it up, and fread says the same thing for both. Told apart
+             * here, because the second one is a driver going missing from a
+             * menu and the whole promise is that nothing does that quietly.
+             * Not academic on the media this program is for. */
+            if (ferror(f)) {
+                fclose(f);
+                return BLOCK_BAD;
+            }
             break;
         }
         have = keep + got;
@@ -386,34 +502,72 @@ static int block_of(const char *path, char *out, int outmax)
     }
     if (at < 0) {
         fclose(f);
-        return 0;
+        return BLOCK_NONE;
     }
     if (fseek(f, at, SEEK_SET) != 0) {
         fclose(f);
-        return 0;
+        return BLOCK_BAD;
     }
     got = fread(out, 1, (size_t)outmax - 1, f);
+    /* A short read here is ordinary: the block may be the last thing in the
+     * file, which is where a linker puts a trailing string constant and where
+     * SC15.DRV's is. A short read because the disk failed is not, and handing
+     * the parser half a block would get it refused for a syntax error it does
+     * not have, or accepted if the half happened to end after SKIDCFGEND. */
+    if (ferror(f)) {
+        fclose(f);
+        return BLOCK_BAD;
+    }
     out[got] = '\0';
     fclose(f);
-    return 1;
+    /* Where this one started, so a caller can ask for the next after it. */
+    return at;
 }
 
 /* Every *.DRV plus LOAD.EXE, in name order. The sort is not cosmetic: DOS
  * hands files back in whatever order the directory happens to hold them, and
- * two machines with the same files have to show the same menu. */
-static int list_files(char names[][DRV_NAME_MAX], int max)
+ * two machines with the same files have to show the same menu.
+ *
+ * The last slot belongs to LOAD.EXE and the drivers may not have it. It is
+ * looked for after them, so a directory holding exactly as many .DRV files as
+ * this can list would otherwise fill the array, find no room, and drop the one
+ * file every video mode lives in without a word about it. One short of full is
+ * where the .DRV list stops.
+ *
+ * Past that the enumeration carries on rather than stopping, and what it keeps
+ * is the lexicographically smallest, which is two things. Every file past the
+ * limit is counted, so the number in the skipped list is the real one instead
+ * of a note about the first one seen. And the set it keeps is the same set on
+ * every machine: stopping early kept whichever names DOS happened to hand back
+ * first, so two directories holding the same files could draw different menus.
+ * That is the same reason the sort below is not cosmetic. */
+static int list_files(char names[][DRV_NAME_MAX], int max, int *over)
 {
     struct find_t f;
     int           n = 0;
     int           i;
     int           j;
 
+    *over = 0;
     if (_dos_findfirst("*.DRV", _A_NORMAL, &f) == 0) {
         do {
-            if (n < max) {
+            if (n < max - 1) {
                 strncpy(names[n], f.name, DRV_NAME_MAX - 1);
                 names[n][DRV_NAME_MAX - 1] = '\0';
                 n++;
+            } else {
+                int worst = 0;
+
+                (*over)++;
+                for (j = 1; j < n; j++) {
+                    if (strcmp(names[j], names[worst]) > 0) {
+                        worst = j;
+                    }
+                }
+                if (strcmp(f.name, names[worst]) < 0) {
+                    strncpy(names[worst], f.name, DRV_NAME_MAX - 1);
+                    names[worst][DRV_NAME_MAX - 1] = '\0';
+                }
             }
         } while (_dos_findnext(&f) == 0);
     }
@@ -435,20 +589,77 @@ static int list_files(char names[][DRV_NAME_MAX], int max)
     return n;
 }
 
+/* Files a scan will open: 32 drivers and LOAD.EXE. Far past any real game
+ * directory, and past what the menu could hold several times over; it is a
+ * bound on the array rather than a limit anybody is meant to meet. */
+#    define SCAN_FILES 33
+
+/* Blocks a scan will take out of one file. The menu cannot hold more rows than
+ * this however many are offered, so a file with more is either malformed or
+ * hoping for a menu that does not exist.
+ *
+ * One further candidate is looked for and never used, and that is the whole of
+ * the difference between reporting a cutoff and claiming one. A file with
+ * exactly this many blocks in it has been read to the end and has not been cut
+ * off; only the probe finding an extra one says otherwise. */
+#    define SCAN_BLOCKS DRV_ROWS_MAX
+
 void drv_scan(void)
 {
-    static char names[32][DRV_NAME_MAX];
+    static char names[SCAN_FILES][DRV_NAME_MAX];
     static char text[DRV_BLK_MAX + 1];
+    char        why[WHY_MAX];
+    int         over = 0;
     int         n;
     int         i;
 
     drv_scan_reset();
-    n = list_files(names, 32);
+    n = list_files(names, SCAN_FILES, &over);
+    if (over > 0) {
+        sprintf(why, "%d of them past the %d this can look at", over,
+                SCAN_FILES - 1);
+        note_skip("*.DRV", why);
+    }
     for (i = 0; i < n; i++) {
-        /* No block is the ordinary case and not a fault: the four drivers
-         * Stunts shipped carry none and are not expected to. */
-        if (block_of(names[i], text, (int)sizeof text)) {
+        long from = 0;
+        int  guard;
+
+        /* Every block in the file, not just the first. LOAD.EXE is where video
+         * modes describe themselves and a patched one may know several, so
+         * stopping at the first would offer one mode and silently drop the
+         * rest, and a malformed candidate would hide a good block behind it.
+         *
+         * No block at all is the ordinary case and not a fault: the four
+         * drivers Stunts shipped carry none and are not expected to. */
+        for (guard = 0; guard <= SCAN_BLOCKS; guard++) {
+            long at = block_of(names[i], text, (int)sizeof text, from);
+            long span;
+
+            if (at == BLOCK_BAD) {
+                note_skip(names[i], "it is here but could not be read");
+                break;
+            }
+            /* BLOCK_NONE, and anything else negative for want of a way for
+             * one to arise: an offset is a position in a file and there is no
+             * such position. */
+            if (at < 0) {
+                break;
+            }
+            /* The extra candidate, found and not used. Being here means there
+             * is one more block than the menu could take, which is worth
+             * saying; having merely reached the end of the loop would not be.
+             */
+            if (guard == SCAN_BLOCKS) {
+                note_skip(names[i], "it has more blocks in it than this reads");
+                break;
+            }
             drv_scan_offer(text, names[i]);
+            /* Past the end of the block just read, not past its magic. A
+             * block may quote the magic in a comment, the way DRVBLOCK.md's
+             * own examples do, and resuming inside one would read the rest of
+             * it again as if it were a second block. */
+            span = drv_blk_span(text);
+            from = at + (span > 0 ? span : (long)strlen(DRV_BLK_MAGIC));
         }
     }
     drv_scan_finish();

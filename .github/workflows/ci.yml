@@ -122,10 +122,103 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The exit codes are distinctive on purpose. The self-check refuses
+      # malformed input on nearly every path it has, and a refusal and a
+      # sanitizer firing are both non-zero: without a number to tell them
+      # apart, a step can contain a memory error and still be read as the
+      # program correctly saying no.
       - name: Self-check under ASan and UBSan
         run: |
-          export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
-          export ASAN_OPTIONS=halt_on_error=1
+          export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:exitcode=87
+          export ASAN_OPTIONS=halt_on_error=1:exitcode=86
           make selfcheck CC=clang CFLAGS="$SAN"
           make selfcheck-sc55 CC=clang CFLAGS="$SAN"
           make selfcheck-min CC=clang CFLAGS="$SAN"
+
+  # Everything above is a hosted compiler, and a hosted compiler cannot see the
+  # thing this program most needs looking at. int is 32 bits on all of them and
+  # 16 on both compilers this ships from, so code that is correct up there can
+  # be wrong on the machine it is for: a file offset kept in an int came back
+  # negative past 32767 and a block found beyond it was thrown away. That was
+  # green under four compilers, two sanitizers and cppcheck.
+  #
+  # So the shipped compiler and the shipped target run on every push, not only
+  # on a release. Same build script the release uses, same self-check binary,
+  # run under DOS.
+  dos:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: open-watcom/setup-watcom@v1
+        with:
+          version: '1.9'
+          target: dos
+
+      - name: Build with Open Watcom
+        shell: cmd
+        run: |
+          call WCLBUILD.BAT
+          if errorlevel 1 exit /b 1
+          if not exist SKIDCFG.EXE exit /b 1
+          if not exist SKIDCHK.EXE exit /b 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dos-ci
+          path: SKIDCHK.EXE
+          if-no-files-found: error
+
+  # build.cmd is the other Windows path, and it needs a job because a build
+  # script nothing runs is a build script with a stale file list in it.
+  #
+  # Its own job rather than a step in the one above, and that part is not
+  # tidiness. setup-watcom exports INCLUDE, clang on Windows reads INCLUDE, and
+  # a hosted clang handed a 16-bit compiler's headers stops on the first
+  # typedef of size_t. The two toolchains are for different machines and do not
+  # share an environment.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with build.cmd
+        shell: cmd
+        run: |
+          call build.cmd
+          if errorlevel 1 exit /b 1
+
+  # The 16-bit binary, run as a 16-bit binary. DOSBox is on a Linux runner and
+  # the self-check needs no game data, no screen and no keyboard, so what gets
+  # checked is the object code the release ships rather than a hosted build of
+  # the same sources.
+  dos-check:
+    needs: dos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dos-ci, path: dos }
+
+      - name: Install DOSBox
+        run: sudo apt-get update && sudo apt-get install -y dosbox
+
+      - name: Run the self-check under DOS
+        run: |
+          set -e
+          mkdir -p run out
+          cp dos/SKIDCHK.EXE run/
+          cat > dosbox.conf <<'EOF'
+          [sdl]
+          output = surface
+          [autoexec]
+          mount c run
+          mount l out
+          c:
+          SKIDCHK > L:\CHK.TXT
+          exit
+          EOF
+          SDL_VIDEODRIVER=dummy dosbox -conf dosbox.conf -exit || true
+          echo "--- what the 16-bit build says about itself ---"
+          cat out/CHK.TXT
+          grep -q "self-check passed" out/CHK.TXT
+          ! grep -q "^FAIL" out/CHK.TXT

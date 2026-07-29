@@ -53,6 +53,12 @@
 #define DRV_MODE_MAX 16        /* keeps line 2 of SETUP.DAT inside its 80 */
 
 #define DRV_BLK_MAX 2048 /* the whole block, magic and terminator included */
+
+/* Characters in a line, not the size of a buffer holding one: a reader gives
+ * next_line() DRV_BLK_LINE_MAX + 1 bytes and a line of exactly this many is
+ * accepted. Written down that way round because DRVBLOCK.md publishes the
+ * number to people writing drivers, and a format that says 128 and takes 127
+ * is a format with a lie in it. The byte it costs is a byte. */
 #define DRV_BLK_LINE_MAX 128
 #define DRV_BLK_LINES_MAX 64
 #define DRV_BLK_HELPS_MAX 32 /* help keys, before they are joined */
@@ -91,6 +97,17 @@ int drv_blk_find(const char *buf, int len);
  * any check contributes no row at all, because a driver named wrongly on the
  * screen is worse than a driver missing from it. */
 const char *drv_blk_parse(struct drv_blk *b, const char *text);
+
+/* How many bytes of text the block takes up: from its first byte to just past
+ * the line DRV_BLK_END is on, or 0 for text with no terminator in it.
+ *
+ * For a caller looking for the next block in the same file. Resuming just past
+ * the magic instead would find one written inside the block already read, a
+ * comment quoting the format being the obvious way, and offer the rest of that
+ * same block a second time. Line by line rather than a search for
+ * the word, because a block is allowed to quote its own terminator in a help
+ * line and it ends the block only on a line of its own. */
+long drv_blk_span(const char *text);
 
 /* Wrap one paragraph into rows of at most cols, breaking on spaces, and write
  * it with a newline after each row. Exposed because it is the one piece of

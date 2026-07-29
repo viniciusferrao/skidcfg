@@ -17,7 +17,15 @@ static int is_blank(int c)
  * terminator dropped, so a block written by a DOS editor reads the same as one
  * written by an assembler. Returns 0 at the end of the text, and -1 for a line
  * longer than the buffer, which is a malformed block rather than a line to
- * truncate. */
+ * truncate.
+ *
+ * The CR of a CRLF is recognised before the length is counted, not after. A
+ * terminator is not content, and counting it as content would make the limit
+ * one character shorter for exactly the editors the CR is here to support: the
+ * published 128 would take 128 characters from an assembler and 127 from a DOS
+ * editor, which is not a limit anybody could work to. A CR that is not part of
+ * a terminator is content like any other byte, and the strip below takes a
+ * trailing one off a last line that ends without an LF. */
 static int next_line(const char **p, char *buf, int max)
 {
     const char *s = *p;
@@ -27,7 +35,17 @@ static int next_line(const char **p, char *buf, int max)
         return 0;
     }
     while (*s != '\0' && *s != '\n') {
+        if (*s == '\r' && s[1] == '\n') {
+            s++; /* onto the LF, which the advance below steps over */
+            break;
+        }
         if (n >= max - 1) {
+            /* Terminated even on the way out. Every caller is meant to look at
+             * the return value before the buffer, but a buffer handed back
+             * without a NUL in it is one strlen away from reading off the end
+             * of somebody's stack, and that is not a thing to leave resting on
+             * a caller getting the order right. */
+            buf[n] = '\0';
             return -1;
         }
         buf[n++] = *s++;
@@ -76,6 +94,52 @@ static int key_is(const char *line, const char *key, const char **val)
     *val = line + n;
     while (is_blank(**val)) {
         (*val)++;
+    }
+    return 1;
+}
+
+/* Whether the first word of s is a name DOS could put on a disk: one to eight
+ * characters, letters or digits or the handful of punctuation 8.3 permits.
+ * Deliberately strict rather than merely excluding path separators, because
+ * the name is going to have .COD appended and looked for. */
+static int dos_name(const char *s)
+{
+    int n = 0;
+
+    while (s[n] != '\0' && s[n] != ' ') {
+        char c = s[n];
+
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') ||
+              strchr("!#$%&'()-@^_`{}~", c) != NULL)) {
+            return 0;
+        }
+        n++;
+    }
+    return n >= 1 && n <= 8;
+}
+
+/* Whether every byte of s is one the screen can draw as a single column.
+ *
+ * DRVBLOCK.md has always said 20h to 7Eh and nothing checked it. Two of the
+ * ways past that are not cosmetic. src/scrn.c advances a tab by four columns
+ * and the wrapper counts it as one byte, so a tab in a label writes four cells
+ * wide and overflows a window nothing measured; a newline moves to the next row
+ * and resets the column, in the middle of a menu. And a byte above 7Eh is the
+ * whole reason the rule exists, because what it draws depends on the code page
+ * the machine booted with.
+ *
+ * Space is allowed: it is a column like any other, and trim has already taken
+ * the ones at each end. */
+static int printable(const char *s)
+{
+    while (*s != '\0') {
+        unsigned char c = (unsigned char)*s;
+
+        if (c < 0x20 || c > 0x7E) {
+            return 0;
+        }
+        s++;
     }
     return 1;
 }
@@ -179,10 +243,16 @@ int drv_blk_wrap(char *out, long outmax, const char *text, int cols, int rows)
             }
             end++;
         }
-        if (text[end] != '\0' && text[end] != '\n' && end - start == cols) {
+        if (text[end] != '\0' && text[end] != '\n' && text[end] != ' ' &&
+            end - start == cols) {
             /* The row is full and the next character is part of a word, so
              * break at the last space instead. No space at all means a word
-             * that cannot be made to fit however it is broken. */
+             * that cannot be made to fit however it is broken.
+             *
+             * A space is not part of a word, and testing for it is what lets a
+             * word of exactly cols characters stand. Without that, a 26
+             * character word followed by another was refused for not fitting a
+             * window it fits exactly. */
             if (last < 0) {
                 return 0;
             }
@@ -196,9 +266,28 @@ int drv_blk_wrap(char *out, long outmax, const char *text, int cols, int rows)
     }
 }
 
+long drv_blk_span(const char *text)
+{
+    char        line[DRV_BLK_LINE_MAX + 1];
+    const char *p = text;
+
+    while (next_line(&p, line, (int)sizeof line) > 0) {
+        long at = (long)(p - text);
+
+        trim(line);
+        if (strcmp(line, DRV_BLK_END) == 0) {
+            return at;
+        }
+        if (at > DRV_BLK_MAX) {
+            break;
+        }
+    }
+    return 0;
+}
+
 const char *drv_blk_parse(struct drv_blk *b, const char *text)
 {
-    char        line[DRV_BLK_LINE_MAX];
+    char        line[DRV_BLK_LINE_MAX + 1];
     char        join[JOIN_MAX];
     const char *p = text;
     const char *val;
@@ -217,15 +306,24 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
     memset(b, 0, sizeof *b);
     join[0] = '\0';
 
+    /* The return value before the buffer, which the loop below has always done
+     * and this did not. What reaches here is whatever the search found: the
+     * magic can turn up in a run of binary with no newline anywhere after it,
+     * and then the line is refused for being too long and the buffer holds no
+     * line at all. Trimming it first was reading, and possibly writing, past
+     * the end of it. */
     got = next_line(&p, line, (int)sizeof line);
+    if (got < 0) {
+        return "the first line is longer than 128 characters";
+    }
     trim(line);
-    if (got <= 0 || strcmp(line, DRV_BLK_MAGIC) != 0) {
+    if (got == 0 || strcmp(line, DRV_BLK_MAGIC) != 0) {
         return "not a driver block";
     }
 
     while ((got = next_line(&p, line, (int)sizeof line)) != 0) {
         if (got < 0) {
-            return "a line is longer than 127 characters";
+            return "a line is longer than 128 characters";
         }
         span = (long)(p - text);
         if (span > DRV_BLK_MAX) {
@@ -242,6 +340,12 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
         }
         if (line[0] == '\0' || line[0] == ';') {
             continue;
+        }
+        /* Before any key looks at it, because every value below either lands
+         * on the screen or names a file. A comment is exempt: it is never
+         * drawn, and somebody's name in it is their business. */
+        if (!printable(line)) {
+            return "a line has a byte in it the screen cannot draw";
         }
 
         if (key_is(line, "sound", &val) || key_is(line, "video", &val)) {
@@ -286,6 +390,15 @@ const char *drv_blk_parse(struct drv_blk *b, const char *text)
             }
             if (!copy_field(b->mode, DRV_MODE_MAX, val)) {
                 return "mode is longer than 16 characters";
+            }
+            /* The first word of it names a file, NAME.COD, so it has to be a
+             * name DOS can hold: eight characters at most and nothing in it
+             * that 8.3 does not allow. Sixteen is the room for the flags that
+             * may follow, as the Hercules row's "CGA /h" does. Without this a
+             * block could ask for a mode whose ninth character is silently
+             * dropped when the file is looked for. */
+            if (!dos_name(val)) {
+                return "the first word of mode is not a name DOS can hold";
             }
         } else if (key_is(line, "disk", &val)) {
             if (got_disk++) {
