@@ -7,9 +7,9 @@
  *
  *     SKIDSETDRV01
  *     sound
- *     label Roland SC-55
- *     brief SC-55
- *     help Select if you have a Roland Sound Canvas on the MPU-401 port.
+ *     label Acme WaveMaster 16
+ *     brief WaveMaster
+ *     help Select if you have an Acme WaveMaster 16 at its factory address.
  *     SKIDSETEND
  *
  * Nothing here touches a file or a screen. It takes the bytes and gives back
@@ -52,16 +52,33 @@
 #define DRV_BRIEF_MAX 21       /* 23 on screen once the brackets are on */
 #define DRV_MODE_MAX 16        /* keeps line 2 of SETUP.DAT inside its 80 */
 
-#define DRV_BLK_MAX 2048 /* the whole block, magic and terminator included */
+/* The whole block, magic and terminator included, and the buffer it is read
+ * into in one go.
+ *
+ * 1024 because the block lives inside the driver and the driver has a size
+ * budget of its own: the ones the game ships run 1200 to 2200 bytes, and
+ * PC15.DRV stops sounding right when grown past about 2400. A limit of 2048
+ * would have allowed a block larger than some entire drivers.
+ *
+ * There is room to spare. The largest possible block with no comments in it is
+ * a little over 500 bytes, a video one being the larger of the two shapes for
+ * having a mode line, and the real SC15.DRV block is 326. So about 500 are left
+ * for a signature and notes. What that does not leave room for is a licence
+ * pasted in full, which is not how to do it: name the licence and link to it.
+ */
+#define DRV_BLK_MAX 1024
 
 /* Characters in a line, not the size of a buffer holding one: a reader gives
  * next_line() DRV_BLK_LINE_MAX + 1 bytes and a line of exactly this many is
  * accepted. Written down that way round because DRVBLOCK.md publishes the
- * number to people writing drivers, and a format that says 128 and takes 127
- * is a format with a lie in it. The byte it costs is a byte. */
-#define DRV_BLK_LINE_MAX 128
-#define DRV_BLK_LINES_MAX 64
-#define DRV_BLK_HELPS_MAX 32 /* help keys, before they are joined */
+ * number to people writing drivers, and a format that says 448 and takes 447
+ * is a format with a lie in it.
+ *
+ * 448 because one line has to hold a whole help paragraph. help appears once
+ * and its value is the entire text, so the longest line a valid block can have
+ * is "help " plus a paragraph that fills the window, which is
+ * DRV_BLK_HELP_MAX. Everything else in the format is far shorter. */
+#define DRV_BLK_LINE_MAX 448
 
 /* The wrapped paragraph, as the window will hold it: rows of columns with a
  * newline after each. DRV_HELP_COLS and DRV_HELP_ROWS are in drivers.h with
@@ -75,7 +92,6 @@ struct drv_blk {
     char label[DRV_LABEL_SOUND_MAX + 1];
     char brief[DRV_BRIEF_MAX + 1];
     char mode[DRV_MODE_MAX + 1];     /* video: the /u argument. sound: empty */
-    char disk;                       /* video: 'A' or 'B'. 0 if not given */
     char help[DRV_BLK_HELP_MAX + 1]; /* wrapped, newline between rows */
 };
 
@@ -98,15 +114,26 @@ int drv_blk_find(const char *buf, int len);
  * screen is worse than a driver missing from it. */
 const char *drv_blk_parse(struct drv_blk *b, const char *text);
 
+/* Whether text begins with the magic on a line of its own. What the search
+ * finds is twelve matching bytes, which a driver's code can hold by accident,
+ * and this tells a malformed block from a coincidence: the scan names the first
+ * and passes over the second without a word, because nobody made a mistake. */
+int drv_blk_is_candidate(const char *text);
+
 /* How many bytes of text the block takes up: from its first byte to just past
- * the line DRV_BLK_END is on, or 0 for text with no terminator in it.
+ * the line DRV_BLK_END is on. Zero when there is no span to give, which is any
+ * of: no terminator in the text, a first line that is not the magic, or the
+ * magic appearing anywhere in a later line, which cannot belong to this block
+ * since the parser refuses the token there.
  *
- * For a caller looking for the next block in the same file. Resuming just past
- * the magic instead would find one written inside the block already read, a
- * comment quoting the format being the obvious way, and offer the rest of that
- * same block a second time. Line by line rather than a search for
- * the word, because a block is allowed to quote its own terminator in a help
- * line and it ends the block only on a line of its own. */
+ * For a caller looking for the next block in the same file, and zero is its cue
+ * to go back to searching from just past this magic rather than trusting an
+ * offset. Reporting a span from a candidate that was not a block sent the scan
+ * past the first terminator downstream, which belongs to the next block: a real
+ * block sitting behind a false candidate was stepped over and never offered.
+ *
+ * Line by line rather than a search for the word, so that a block refused for
+ * some other reason still reports its own extent and is not read twice. */
 long drv_blk_span(const char *text);
 
 /* Wrap one paragraph into rows of at most cols, breaking on spaces, and write

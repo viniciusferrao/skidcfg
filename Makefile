@@ -93,7 +93,7 @@ format-check:
 
 lint:
 	cppcheck --std=c89 --enable=warning,performance,portability \
-	         --inline-suppr --error-exitcode=1 \
+	         --inline-suppr --error-exitcode=1 -I src \
 	         --suppress=missingIncludeSystem src/ test/
 	@for f in $(SRC) test/selfchk.c; do \
 	  $(CC) -std=c90 -pedantic-errors -Wall -Wextra -Wshadow -Wcast-qual \
@@ -110,11 +110,14 @@ lint:
 # 437, 850 and 860. The program already spells that name without them on
 # screen.
 #
-# Every text member is asserted to be seven-bit ASCII, and every one means
-# every one. It is not only the licence with a name in it: README.md says
-# Broderbund, whose o has a stroke through it, and a letter the table does not
-# know has to stop a release rather than ship as the mojibake this exists to
-# prevent.
+# Every text member is asserted to hold only ASCII printable characters, 0x20
+# to 0x7E, plus the line endings. Not "seven-bit": DEL and the control codes
+# are seven-bit too and none of them belongs in a file TYPE renders.
+#
+# Every one means every one. It is not only the licence with a name in it:
+# README.md says Broderbund, whose o has a stroke through it, and a letter the
+# table does not know has to stop a release rather than ship as the mojibake
+# this exists to prevent.
 #
 # The assertion is spelled out in both rules rather than shared. A canned
 # recipe would do it once, and the one thing this must not be is clever.
@@ -128,7 +131,7 @@ lint:
 # DOS/32A licence is checked out CRLF for the DOS reader's benefit, and the
 # generated copy carried a doubled CR on every line.
 #
-# The seven-bit check cannot see that, because it deletes every CR before it
+# The printable check cannot see that, because it deletes every CR before it
 # looks. So the line endings are asserted separately, and asserted against the
 # bytes: strip the CRs, put exactly one back per line, and the result has to be
 # the file itself. Anything else, a doubled CR or a bare LF, fails the compare.
@@ -143,7 +146,7 @@ define dostext_verify
 	  od -c $@ | grep '\\r  *\\r\|[^r]  *\\n' | head -5 >&2; \
 	  rm -f $@; exit 1; \
 	fi
-	@echo "$@ is seven-bit ASCII with CRLF"
+	@echo "$@ is ASCII printable with CRLF"
 endef
 
 # 78 columns because that is what EDIT.COM reads comfortably.

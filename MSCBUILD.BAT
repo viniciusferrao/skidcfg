@@ -75,7 +75,18 @@ rem The self-check. It exercises the whole SETUP.DAT format on files it writes
 rem itself, so it needs no game data and no screen. Compiled here rather than
 rem in test\ so both links can use the same objects; skidset.obj is left out
 rem because this file brings its own main().
-cl /c /AL /W3 %EXTRA% /I. ..\test\selfchk.c
+rem
+rem /Gt1 puts this module's data in its own far segment instead of DGROUP, the
+rem 64 KB of near data the whole program shares. Without it, and only under this
+rem compiler, the self-check reached a size where the linker reported nothing,
+rem SKIDCHK.EXE was produced, and running it wrote not one byte: the image died
+rem before main. Every check is a string, so the literals in this one module are
+rem most of that 64 KB. It is a test binary and far data costs it nothing.
+rem
+rem The number is the smallest item to move, so /Gt1 moves everything. If this
+rem ever needs revisiting, the symptom to look for is a DOS run that produces no
+rem output at all rather than a diagnostic.
+cl /c /AL /W3 /Gt1 %EXTRA% /I. ..\test\selfchk.c
 if errorlevel 1 goto fail
 link /NOI /NOD /STACK:8192 selfchk+drivers+drvblk+drvscan+setup+install+util,..\SKIDCHK.EXE,,LLIBCR+LIBH+EM;
 if errorlevel 1 goto fail

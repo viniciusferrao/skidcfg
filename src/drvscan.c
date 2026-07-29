@@ -205,6 +205,12 @@ static int needs_present(const char *name)
  * carries a single space: "load.exe /u MCGA  " and "load.exe /u MCGA " are the
  * same command however they are written.
  *
+ * They are the same command to the game as well, which had to be measured
+ * rather than assumed, because a block-derived video row writes the one-space
+ * form into a file STUNTS.COM parses in 758 bytes of hand written code. Both
+ * spellings launch it; a mode name LOAD.EXE does not know returns to DOS, which
+ * is what says the test could tell the difference.
+ *
  * Case is ignored for the same reason, and it has to be: take_tokens() in
  * src/setup.c matches line 2 with the case folded, so "load.exe /u mcga" and
  * "load.exe /u MCGA" are one identity to the half of the program that reads
@@ -273,10 +279,12 @@ static const char *add(struct drv_blk *b, const char *name)
         strcpy(e->cmd, DRV_VIDEO_CMD);
         strcat(e->cmd, b->mode);
         strcat(e->cmd, " ");
-        strcpy(e->disk, "disk '");
-        e->disk[6] = (char)(b->disk != 0 ? b->disk : 'A');
-        e->disk[7] = '\'';
-        e->disk[8] = '\0';
+        /* Line 4, which a block does not get to set. It names the install
+         * floppy the mode's files came off, and only the original's installer
+         * ever reads it. A mode added by a block needs a patched LOAD.EXE,
+         * which that installer will never be asked to install, so the letter
+         * is bookkeeping and A is as true as anything else. */
+        strcpy(e->disk, "disk 'A'");
     } else if (!switch_of(e->cmd, name)) {
         return "its name is not XX15.DRV, so no switch could reach it";
     }
@@ -284,8 +292,9 @@ static const char *add(struct drv_blk *b, const char *name)
     /* Two rows that write the same line 2 cannot both work. Line 2 is what
      * identifies a driver when the file is read back, and setup.c returns the
      * first row that matches it, so choosing the second would write one index
-     * and read back the other. The reachable case is a build that compiled the
-     * SC-55 row in and then found SC15.DRV describing itself.
+     * and read back the other. The reachable case is a build that compiled a
+     * row in for a driver that also carries a block, which is why the table's
+     * own example row names a file that does not exist.
      *
      * A row that is in the table and not on the menu is the exception, and the
      * useful one. The original's VGA entry is exactly that: it has an index and
@@ -304,13 +313,15 @@ static const char *add(struct drv_blk *b, const char *name)
         opt[i].brief = e->brief;
         opt[i].help = (e->help[0] != '\0') ? e->help : NULL;
         opt[i].from = e->from;
-        /* And line 4, which a dormant row does not have and the block does.
-         * The VGA entry carries no disk because no release ships the files for
-         * it, so whoever supplies them is also the only one who can say which
-         * disk they came off. Without this the block's disk was read, checked
-         * and then dropped, and choosing the row left line 4 saying whatever it
-         * said before. What it needs is left alone: that was derived from the
-         * command fragment, which is the one this block just matched. */
+        /* And line 4, which a dormant row does not have. The VGA entry carries
+         * no disk because no release ships the files for it, so filling a
+         * dormant row in has to supply one or choosing the row would leave line
+         * 4 saying whatever it said before. It comes from here rather than from
+         * the block, which has no key for it: line 4 means something only to
+         * the original's floppy installer, and that installer will never be
+         * asked to install a mode needing a patched LOAD.EXE. What the row
+         * needs is left alone, being derived from the command fragment this
+         * block just matched. */
         if (b->video) {
             opt[i].disk = e->disk;
         }
@@ -454,20 +465,49 @@ void drv_scan_offer(const char *text, const char *name)
     }
 }
 
+/* What block_of returns instead of an offset. Two of them, because they mean
+ * different things to the caller: no more blocks is how every file ends, and a
+ * file that would not open or would not seek is a fault worth naming. One
+ * value for both had the caller treating a failure as a block at offset zero
+ * and offering whatever the buffer still held from the file before.
+ *
+ * Outside the screen-only part with drv_scan_hold(), which speaks in these and
+ * has no directory of its own to read. */
+#define BLOCK_NONE (-1L)
+#define BLOCK_BAD (-2L)
+
+/* Integer arithmetic and nothing else, so it is built and checked on every host
+ * rather than only where there is a directory to scan. The policy it decides is
+ * the one that keeps a driver's held block from being offered on the strength
+ * of a file nobody finished reading, and that is worth exercising under the
+ * hosted sanitizers: it used to live inside the DOS and Win32 half, where a
+ * Linux build compiled neither the function nor its checks. */
+int drv_scan_hold(int complete, long found, long again)
+{
+    if (found < 0) {
+        return DRV_HOLD_NONE;
+    }
+    /* Before anything about the reread. A walk that stopped early never proved
+     * the file holds one block, so what was held is not a driver's description,
+     * it is the first of an unknown number. */
+    if (!complete) {
+        return DRV_HOLD_PARTIAL;
+    }
+    if (again == BLOCK_BAD) {
+        return DRV_HOLD_UNREAD;
+    }
+    if (again != found) {
+        return DRV_HOLD_MOVED;
+    }
+    return DRV_HOLD_OFFER;
+}
+
 #ifdef SK_SCREEN
 
 /* Read in overlapping chunks, because a magic lying across a boundary is the
  * one way a whole file search can miss what it is looking for. Then seek back
  * and take the block itself in one piece. */
 static char scratch[4096];
-
-/* What block_of returns instead of an offset. Two of them, because they mean
- * different things to the caller: no more blocks is how every file ends, and a
- * file that would not open or would not seek is a fault worth naming. One
- * value for both had the caller treating a failure as a block at offset zero
- * and offering whatever the buffer still held from the file before. */
-#    define BLOCK_NONE (-1L)
-#    define BLOCK_BAD (-2L)
 
 /* long, and that is not the same decision as the int inside drv_blk_find().
  * That one indexes a 4 KB buffer once per byte of the game and is int for the
@@ -559,6 +599,27 @@ static long block_of(const char *path, char *out, int outmax, long from)
  * every machine: stopping early kept whichever names DOS happened to hand back
  * first, so two directories holding the same files could draw different menus.
  * That is the same reason the sort below is not cosmetic. */
+/* A directory entry's name into one of the slots above, truncated if it somehow
+ * does not fit. An 8.3 name cannot overrun a slot, so the clamp is for a host
+ * whose search returns something longer rather than for DOS.
+ *
+ * The length is worked out before the copy rather than being handed to strncpy,
+ * which is not a style preference: strncpy is free to leave the buffer
+ * unterminated at exactly the limit, and GCC's -Wstringop-truncation says so
+ * whenever it can see that a name is as long as the slot allows, which it can
+ * once this is inlined. Terminating on the next line answers the bug and not
+ * the diagnostic. */
+static void copy_name(char *dst, const char *src)
+{
+    size_t n = strlen(src);
+
+    if (n > (size_t)(SK_NAME_MAX - 1)) {
+        n = (size_t)(SK_NAME_MAX - 1);
+    }
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 /* Returns the number of names found, or -1 if the directory stopped
  * answering. A short list and a failed walk are not the same thing: read as
  * one, a floppy that fails halfway presents whatever it managed to read as
@@ -575,8 +636,7 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
     for (more = sk_find_first(&f, "*.DRV"); more == SK_FIND_MATCH;
          more = sk_find_next(&f)) {
         if (n < max - 1) {
-            strncpy(names[n], f.name, SK_NAME_MAX - 1);
-            names[n][SK_NAME_MAX - 1] = '\0';
+            copy_name(names[n], f.name);
             n++;
             continue;
         }
@@ -593,8 +653,7 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
                 }
             }
             if (sk_name_cmp(f.name, names[worst]) < 0) {
-                strncpy(names[worst], f.name, SK_NAME_MAX - 1);
-                names[worst][SK_NAME_MAX - 1] = '\0';
+                copy_name(names[worst], f.name);
             }
         }
     }
@@ -609,8 +668,7 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
      * extension mechanism away without a word. */
     more = sk_find_first(&f, "LOAD.EXE");
     if (more == SK_FIND_MATCH && n < max) {
-        strncpy(names[n], f.name, SK_NAME_MAX - 1);
-        names[n][SK_NAME_MAX - 1] = '\0';
+        copy_name(names[n], f.name);
         n++;
     }
     sk_find_done(&f);
@@ -635,15 +693,25 @@ static int list_files(char names[][SK_NAME_MAX], int max, int *over)
  * bound on the array rather than a limit anybody is meant to meet. */
 #    define SCAN_FILES 33
 
-/* Blocks a scan will take out of one file. The menu cannot hold more rows than
- * this however many are offered, so a file with more is either malformed or
- * hoping for a menu that does not exist.
+/* There is deliberately no limit on how many blocks a LOAD.EXE may hold. One
+ * existed, set at the menu's row count, and it was a limit on the wrong thing:
+ * a block the menu cannot seat is already refused by name with "there is no
+ * room left on the menu", which is the real constraint and says so, while a
+ * count here reported a cutoff and implied the parser had run out instead.
+ * Somebody who reverse engineers LOAD.EXE far enough to add forty modes should
+ * meet the screen's limit, not an arbitrary one on the way to it.
  *
- * One further candidate is looked for and never used, and that is the whole of
- * the difference between reporting a cutoff and claiming one. A file with
- * exactly this many blocks in it has been read to the end and has not been cut
- * off; only the probe finding an extra one says otherwise. */
-#    define SCAN_BLOCKS DRV_ROWS_MAX
+ * A driver is still one block, which is not a count of this kind: its switch is
+ * its filename and a second block could only claim the same switch.
+ *
+ * Raw magic matches are not capped either. Sixty-four of them were, and that
+ * was a cost bound dressed as a safety one: every step moves from forward by a
+ * whole block or by a magic length, and the search runs over a finite file, so
+ * the loop ends at the last match whether anything counts it or not. What the
+ * bound actually did was stop reading a file with more matches than that and
+ * say nothing, which loses a valid block in silence. A file crafted to hold
+ * hundreds of false matches costs a slow machine some reading; a file that
+ * quietly drops its driver costs somebody an afternoon. */
 
 void drv_scan(void)
 {
@@ -672,7 +740,6 @@ void drv_scan(void)
     }
     for (i = 0; i < n; i++) {
         long from = 0;
-        int  guard;
 
         /* Every block in the file, not just the first. LOAD.EXE is where video
          * modes describe themselves and a patched one may know several, so
@@ -681,35 +748,121 @@ void drv_scan(void)
          *
          * No block at all is the ordinary case and not a fault: the four
          * drivers Stunts shipped carry none and are not expected to. */
-        for (guard = 0; guard <= SCAN_BLOCKS; guard++) {
+        int blocks = 0;
+        /* A driver may carry one block and only one. Its switch is its
+         * filename, so two blocks in ZZ15.DRV both claim /szz and the second
+         * could never be offered whatever it said. That made a two block driver
+         * report a duplicate command, which describes the symptom rather than
+         * the fault, so the file is refused instead: a driver holding two
+         * descriptions of itself is malformed and its author needs to know
+         * that, not which of the two survived.
+         *
+         * The first block is therefore held back until the file has been read
+         * through, and offered only if it was the only one. LOAD.EXE is exempt,
+         * being the carrier for video modes rather than a driver. */
+        int  many = !sk_name_eq(names[i], "LOAD.EXE");
+        long first_at = -1;
+        /* Whether the walk reached the end of the file rather than stopping on
+         * something it could not read. A held block is only a driver's one
+         * description if this is true; see drv_scan_hold(). */
+        int complete = 0;
+        /* Whether the walk already named a read failure. The held block is then
+         * unproven for that same reason, and saying both leaves a reader two
+         * lines about one fault. */
+        int said_bad = 0;
+
+        /* Until the file runs out of magic matches. from moves forward every
+         * time round, by a whole block or by a magic length, so this ends. */
+        for (;;) {
             long at = block_of(names[i], text, (int)sizeof text, from);
             long span;
 
             if (at == BLOCK_BAD) {
                 note_skip(names[i], "it is here but could not be read");
+                said_bad = 1;
                 break;
             }
             /* BLOCK_NONE, and anything else negative for want of a way for
              * one to arise: an offset is a position in a file and there is no
-             * such position. */
+             * such position. This is the only way out of the loop that means
+             * the whole file was read. */
             if (at < 0) {
+                complete = 1;
                 break;
             }
-            /* The extra candidate, found and not used. Being here means there
-             * is one more block than the menu could take, which is worth
-             * saying; having merely reached the end of the loop would not be.
-             */
-            if (guard == SCAN_BLOCKS) {
-                note_skip(names[i], "it has more blocks in it than this reads");
-                break;
-            }
-            drv_scan_offer(text, names[i]);
-            /* Past the end of the block just read, not past its magic. A
-             * block may quote the magic in a comment, the way DRVBLOCK.md's
-             * own examples do, and resuming inside one would read the rest of
-             * it again as if it were a second block. */
+            /* Past the end of the block just read, not past its magic, so a
+             * block is never read twice. Zero means the candidate has no span
+             * to give: its first line was not the magic, or the magic turned up
+             * again before any terminator. Then the search resumes one
+             * magic length in, which finds the next candidate rather than
+             * stepping over a real block that happened to sit behind a false
+             * one. */
             span = drv_blk_span(text);
             from = at + (span > 0 ? span : (long)strlen(DRV_BLK_MAGIC));
+
+            /* Only a delimited block spends the menu's budget. A raw match on
+             * twelve bytes of binary is not a block yet, and counting one would
+             * let a run of false candidates push a real block past the limit
+             * and report a file as too full when it holds one row.
+             *
+             * A candidate that at least starts with the magic on its own line
+             * is somebody's block and gets named; one that does not is bytes
+             * that happened to match, and saying so about a driver's code would
+             * be noise nobody can act on. */
+            if (span == 0) {
+                if (drv_blk_is_candidate(text)) {
+                    drv_scan_offer(text, names[i]);
+                }
+                continue;
+            }
+            blocks++;
+            if (!many) {
+                drv_scan_offer(text, names[i]);
+                continue;
+            }
+            /* A driver's first block waits; its second ends the file. */
+            if (blocks == 1) {
+                first_at = at;
+                continue;
+            }
+            note_skip(names[i], "a driver carries one block, this has more");
+            first_at = -1;
+            break;
+        }
+        /* The held back block, read again now that nothing else turned up.
+         * Rereading costs one 1 KB read and saves a second buffer of that size,
+         * which is the scarcer of the two in a 16-bit build.
+         *
+         * Every way this can go wrong says so. Offering a row from a file the
+         * scan could not finish would be claiming the one block rule held when
+         * nothing established it, and dropping a block without a word is how a
+         * driver disappears on a floppy that is failing. */
+        if (many) {
+            long again = -1;
+
+            if (complete && first_at >= 0) {
+                again = block_of(names[i], text, (int)sizeof text, first_at);
+            }
+            switch (drv_scan_hold(complete, first_at, again)) {
+            case DRV_HOLD_OFFER:
+                drv_scan_offer(text, names[i]);
+                break;
+            case DRV_HOLD_PARTIAL:
+                if (!said_bad) {
+                    note_skip(names[i], "it was not read to the end, so its "
+                                        "one block is unproven");
+                }
+                break;
+            case DRV_HOLD_UNREAD:
+                note_skip(names[i], "its block could not be read a second "
+                                    "time");
+                break;
+            case DRV_HOLD_MOVED:
+                note_skip(names[i], "it changed while it was being read");
+                break;
+            default:
+                break;
+            }
         }
     }
     drv_scan_finish();

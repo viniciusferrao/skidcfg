@@ -3,8 +3,8 @@
  * src/drvblk.c reads one block. This finds the files that carry them, works
  * out the things the block deliberately does not say, and merges the result
  * with the built-in tables. After drv_scan() the two tables below are what the
- * program offers; before it, and on any host that is not DOS, they are exactly
- * the built-in ones.
+ * program offers; before it, and on a build with no directory scanner, they are
+ * exactly the built-in ones.
  *
  * ------------------------------------------------------- what this works out
  *
@@ -22,10 +22,15 @@
  *
  * ------------------------------------------------------------------ on hosts
  *
- * The scan is DOS only, because it is _dos_findfirst and a directory full of
- * 8.3 names. Everywhere else drv_scan() finds nothing and says so, which
- * leaves the built-in tables standing and lets the rest of the program compile
- * and run under the same warnings as the DOS build.
+ * The scan needs a directory, so it is built where there is one to read: DOS
+ * through _dos_findfirst, and Win32 through _findfirst, which is why this used
+ * to say DOS only and no longer can. Everywhere else drv_scan() finds nothing
+ * and says so, which leaves the built-in tables standing and lets the rest of
+ * the program compile and run under the same warnings as the DOS build.
+ *
+ * drv_scan_hold() is the exception and is built everywhere: it decides a policy
+ * out of three integers and has no directory of its own, so the hosted
+ * sanitizers exercise it too.
  */
 #ifndef DRVSCAN_H
 #define DRVSCAN_H
@@ -62,6 +67,30 @@ void drv_scan_reset(void);
  * sound driver's switch comes from it, and so does whether a block is in the
  * carrier it belongs in. */
 void drv_scan_offer(const char *text, const char *name);
+
+/* What becomes of a driver's one block, decided apart from the reading of it.
+ *
+ * A .DRV may carry one block, which is not known until the whole file has been
+ * walked, so the first block is held and offered afterwards. Three things can
+ * go wrong between holding it and offering it, and every one of them has to be
+ * fail-closed: the walk may stop early on a file that cannot be read, in which
+ * case a second block may exist past the point the medium stopped answering and
+ * the one block invariant is unproven rather than true; and the reread may fail
+ * or come back from somewhere else, which is a file that changed underneath.
+ *
+ * complete is whether the walk reached the end of the file. found is where the
+ * held block was, or -1 for none. again is what the reread returned.
+ *
+ * Visible because the failures are the point and a floppy that fails on demand
+ * is not something a self-check can arrange. The reading stays private; only
+ * the decision comes out, in the same spirit as drv_scan_offer(). */
+#define DRV_HOLD_NONE 0    /* nothing was held, so nothing to do */
+#define DRV_HOLD_OFFER 1   /* the walk finished and the reread agreed */
+#define DRV_HOLD_PARTIAL 2 /* the file was not read to the end */
+#define DRV_HOLD_UNREAD 3  /* it could not be read a second time */
+#define DRV_HOLD_MOVED 4   /* the reread found it somewhere else */
+
+int drv_scan_hold(int complete, long found, long again);
 
 /* Applied once after the last offer: every row whose driver is not on the disk
  * comes off the menu. Separate from drv_scan_offer() because it is a decision

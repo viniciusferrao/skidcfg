@@ -802,13 +802,14 @@ static int rows_in(const char *s)
     return n;
 }
 
-static const char BLOCK_OK[] = "SKIDSETDRV01\n"
-                               "sound\n"
-                               "label Roland SC-55\n"
-                               "brief SC-55\n"
-                               "help Select if you have a Roland Sound\n"
-                               "help Canvas on the MPU-401 port.\n"
-                               "SKIDSETEND\n";
+static const char BLOCK_OK[] =
+    "SKIDSETDRV01\n"
+    "sound\n"
+    "label Acme WaveMaster 16\n"
+    "brief WaveMaster\n"
+    "help Select if you have an Acme WaveMaster 16 at its "
+    "factory address.\n"
+    "SKIDSETEND\n";
 
 static void check_block(void)
 {
@@ -822,9 +823,9 @@ static void check_block(void)
 
     why = drv_blk_parse(&a, BLOCK_OK);
     expect("a block with every required key is accepted", why == NULL, 1);
-    expect_str("its label", a.label, "Roland SC-55");
+    expect_str("its label", a.label, "Acme WaveMaster 16");
     expect_str("its brief, without the brackets skidset adds", a.brief,
-               "SC-55");
+               "WaveMaster");
     expect("it is a sound block", a.video, 0);
     expect("its help fits the window", rows_in(a.help) <= DRV_HELP_ROWS, 1);
     expect("and no row of it is wider than the window", 1,
@@ -833,64 +834,65 @@ static void check_block(void)
 
     /* The invisible space rule, which is the whole reason this format has no
      * quoting: a trailing space nobody can see must not change any byte. */
-    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
-                            "sound   \n"
-                            "label Roland SC-55  \n"
-                            "brief   SC-55\n"
-                            "help Select if you have a Roland Sound \n"
-                            "help Canvas on the MPU-401 port.\n"
-                            "SKIDSETEND\n");
+    why = drv_blk_parse(&b,
+                        "SKIDSETDRV01\n"
+                        "sound   \n"
+                        "label Acme WaveMaster 16  \n"
+                        "brief   WaveMaster\n"
+                        "help Select if you have an Acme WaveMaster 16 at its "
+                        "factory address.  \n"
+                        "SKIDSETEND\n");
     expect("spaces nobody can see are accepted", why == NULL, 1);
     expect("and change nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
-    /* One long help line has to mean what several short ones mean, or where
-     * somebody breaks their source would change the screen. */
-    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
-                            "sound\n"
-                            "label Roland SC-55\n"
-                            "brief SC-55\n"
-                            "help Select if you have a Roland Sound Canvas on "
-                            "the MPU-401 port.\n"
-                            "SKIDSETEND\n");
-    expect("one long help line is accepted", why == NULL, 1);
-    expect("and wraps to the same paragraph as two short ones",
-           strcmp(a.help, b.help) == 0, 1);
+    /* Extra spaces around the value change nothing, which is what makes the
+     * absence of quoting safe. */
+    why =
+        drv_blk_parse(&b, "SKIDSETDRV01\n"
+                          "sound\n"
+                          "label Acme WaveMaster 16\n"
+                          "brief WaveMaster\n"
+                          "help    Select if you have an Acme WaveMaster 16 at "
+                          "its factory address.\n"
+                          "SKIDSETEND\n");
+    expect("spaces around the help value are accepted", why == NULL, 1);
+    expect("and wrap to the same paragraph", strcmp(a.help, b.help) == 0, 1);
 
     /* A block assembled by hand in a DOS editor arrives with CRLF. */
-    why = drv_blk_parse(&b, "SKIDSETDRV01\r\n"
-                            "sound\r\n"
-                            "label Roland SC-55\r\n"
-                            "brief SC-55\r\n"
-                            "help Select if you have a Roland Sound\r\n"
-                            "help Canvas on the MPU-401 port.\r\n"
-                            "SKIDSETEND\r\n");
+    why = drv_blk_parse(&b,
+                        "SKIDSETDRV01\r\n"
+                        "sound\r\n"
+                        "label Acme WaveMaster 16\r\n"
+                        "brief WaveMaster\r\n"
+                        "help Select if you have an Acme WaveMaster 16 at its "
+                        "factory address.\r\n"
+                        "SKIDSETEND\r\n");
     expect("CRLF is accepted", why == NULL, 1);
     expect("and changes nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
-    why = drv_blk_parse(&b, "SKIDSETDRV01\n"
-                            "; who made this, and under what licence\n"
-                            "\n"
-                            "sound\n"
-                            "  label Roland SC-55\n"
-                            "brief SC-55\n"
-                            "help Select if you have a Roland Sound\n"
-                            "help Canvas on the MPU-401 port.\n"
-                            "SKIDSETEND\n");
+    why = drv_blk_parse(&b,
+                        "SKIDSETDRV01\n"
+                        "; who made this, and under what licence\n"
+                        "\n"
+                        "sound\n"
+                        "  label Acme WaveMaster 16\n"
+                        "brief WaveMaster\n"
+                        "help Select if you have an Acme WaveMaster 16 at its "
+                        "factory address.\n"
+                        "SKIDSETEND\n");
     expect("comments, blank lines and indenting are accepted", why == NULL, 1);
     expect("and change nothing", memcmp(&a, &b, sizeof a) == 0, 1);
 
-    /* A video block carries the two keys a sound block must not. */
+    /* A video block carries the one key a sound block must not. */
     why = drv_blk_parse(&b, "SKIDSETDRV01\n"
                             "video\n"
                             "mode SVGA\n"
-                            "disk B\n"
                             "label SVGA graphics\n"
                             "brief SVGA\n"
                             "SKIDSETEND\n");
     expect("a video block is accepted", why == NULL, 1);
     expect("it is a video block", b.video, 1);
     expect_str("its mode", b.mode, "SVGA");
-    expect("its disk", b.disk, 'B');
     expect("no help at all is allowed", b.help[0], '\0');
 
     expect_refused("a block with no magic", "sound\nlabel X\nbrief X\n");
@@ -915,12 +917,13 @@ static void check_block(void)
      * offered are cmd and index, which are the two things the format
      * deliberately leaves to skidset: a driver that tries to declare them is
      * exactly the case this rule has to absorb rather than fail on. */
-    why = drv_blk_parse(&b, "SKIDSETDRV01\nsound\nlabel Roland SC-55\n"
-                            "brief SC-55\ncmd /ssc\nindex 6\n"
-                            "author somebody\n"
-                            "help Select if you have a Roland Sound\n"
-                            "help Canvas on the MPU-401 port.\n"
-                            "SKIDSETEND\n");
+    why = drv_blk_parse(&b,
+                        "SKIDSETDRV01\nsound\nlabel Acme WaveMaster 16\n"
+                        "brief WaveMaster\ncmd /szz\nindex 6\ndisk B\n"
+                        "author somebody\n"
+                        "help Select if you have an Acme WaveMaster 16 at its "
+                        "factory address.\n"
+                        "SKIDSETEND\n");
     expect("keys this build does not know are ignored", why == NULL, 1);
     expect("and the rest of the block is read as if they were not there",
            memcmp(&a, &b, sizeof a) == 0, 1);
@@ -933,21 +936,51 @@ static void check_block(void)
     /* The keys are English words and a help paragraph is English, so they meet.
      * They cannot collide: a key is only a key at the start of a line, and
      * every line of a paragraph carries its own. */
-    why = drv_blk_parse(&b, "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
-                            "help The sound and video label on this card\n"
-                            "help needs no help; brief mode disk SKIDSETEND\n"
-                            "SKIDSETEND\n");
+    why = drv_blk_parse(&b,
+                        "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
+                        "help The sound and video label on this card needs no "
+                        "help; brief mode disk\n"
+                        "SKIDSETEND\n");
     expect("a paragraph made of this format's own key words is accepted",
            why == NULL, 1);
     expect_str("and survives whole", b.help,
                "The sound and video label\non this card needs no\n"
-               "help; brief mode disk\nSKIDSETEND");
+               "help; brief mode disk");
 
-    /* The brackets are the screen's. Doubling them up silently would put
-     * ((SC-55)) on the main menu. */
-    expect_refused("a brief with the brackets already on it",
-                   "SKIDSETDRV01\nsound\nlabel X\nbrief (SC-55)\n"
+    /* The terminator is the one word that does not go in a value, and it is
+     * refused rather than read. This parser has no trouble with it, since the
+     * compare that ends a block is a whole line; the rule is for a reader that
+     * searches the bytes instead, which would truncate such a block with no
+     * diagnostic available to it. So the format does not let one be written.
+     *
+     * Both places it could hide, because a comment is exempt from every other
+     * rule about what a line may contain and it is not exempt from this one. */
+    expect_refused("the terminator inside a value",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
+                   "help this paragraph says SKIDSETEND in it\n"
                    "SKIDSETEND\n");
+    expect_refused("the terminator inside a comment",
+                   "SKIDSETDRV01\n; the block ends with SKIDSETEND\n"
+                   "sound\nlabel X\nbrief X\nSKIDSETEND\n");
+    expect_refused("the terminator with anything at all beside it",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\nSKIDSETEND x\n");
+
+    /* And the magic is held to the same rule, because a tag that identifies a
+     * format is not also content. One rule for both tokens is one thing to
+     * read and one thing to implement, and the exception bought a driver
+     * nothing but the ability to spell the magic in a comment. */
+    expect_refused("the magic inside a comment",
+                   "SKIDSETDRV01\n; a SKIDSETDRV01 block\n"
+                   "sound\nlabel X\nbrief X\nSKIDSETEND\n");
+    expect_refused("the magic inside a value",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
+                   "help written to SKIDSETDRV01\nSKIDSETEND\n");
+    /* A driver may still say which format it is written to, just not by
+     * quoting the token. */
+    expect("a comment naming the format without the token is accepted",
+           drv_blk_parse(&b, "SKIDSETDRV01\n; a skidset driver block, v1\n"
+                             "sound\nlabel X\nbrief X\nSKIDSETEND\n") == NULL,
+           1);
 
     /* Exactly at the limit is a row, one over is a refusal. Both, because a
      * check that only proves the refusal would pass with an off-by-one that
@@ -976,14 +1009,42 @@ static void check_block(void)
     expect_refused("mode on a sound block",
                    "SKIDSETDRV01\nsound\nmode SVGA\nlabel X\nbrief X\n"
                    "SKIDSETEND\n");
-    expect_refused("disk on a sound block",
-                   "SKIDSETDRV01\nsound\ndisk A\nlabel X\nbrief X\n"
-                   "SKIDSETEND\n");
     expect_refused("a video block with no mode",
                    "SKIDSETDRV01\nvideo\nlabel X\nbrief X\nSKIDSETEND\n");
-    expect_refused("a disk that is not A or B",
-                   "SKIDSETDRV01\nvideo\nmode SVGA\ndisk C\nlabel X\n"
-                   "brief X\nSKIDSETEND\n");
+
+    /* help appears once and its value is the whole paragraph. Two of them is a
+
+     * * duplicate key like any other, not a continuation. */
+    expect_refused("help given twice", "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
+                                       "help one\nhelp two\nSKIDSETEND\n");
+    expect_refused("an empty help",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\nhelp\n"
+                   "SKIDSETEND\n");
+
+    /* And one line has to be able to fill the window, which is the whole
+     *
+     * reason a line may be 448 characters. Fifteen rows of twenty-six columns
+
+     * * of five-character words is what that comes to; a format where the
+
+     * * longest legal paragraph could not be written on one line would have
+     * the
+     * key limit contradicting the help limit. */
+    {
+        static char big[DRV_BLK_LINE_MAX + 64];
+        int         w;
+
+        strcpy(big, "SKIDSETDRV01\nsound\nlabel X\nbrief X\nhelp");
+        for (w = 0; w < DRV_HELP_ROWS * 5; w++) {
+            strcat(big, " wwww");
+        }
+        strcat(big, "\nSKIDSETEND\n");
+        why = drv_blk_parse(&b, big);
+        expect("a paragraph filling the window fits on one help line",
+               why == NULL, 1);
+        expect("and wraps to every row the window has", rows_in(b.help),
+               DRV_HELP_ROWS);
+    }
 
     /* A word wider than the window cannot be broken anywhere, so it is a
      * refusal rather than a row that runs off into the desktop. */
@@ -999,11 +1060,6 @@ static void check_block(void)
     expect_str("and puts a newline between rows and not after the last",
                wrapped, "one\ntwo\nthree");
     expect("so skidset counts the rows the wrapper made", rows_in(wrapped), i);
-
-    i = drv_blk_wrap(wrapped, (long)sizeof wrapped, "aa\nbb", 8, 4);
-    expect("an empty help is a blank row between paragraphs", i, 3);
-    expect_str("which is the shape a transcribed paragraph has", wrapped,
-               "aa\n\nbb");
 
     expect("nothing at all is no rows and not a failure",
            drv_blk_wrap(wrapped, (long)sizeof wrapped, "", 8, 4), 0);
@@ -1050,10 +1106,10 @@ static void check_block(void)
 
     /* Exactly at the published limit and one over it, in both line endings.
      *
-     * DRVBLOCK.md says 128 to people writing drivers, and a format that says
-     * 128 and takes 127 is a format with a lie in it. All four cases, because
+     * DRVBLOCK.md says 448 to people writing drivers, and a format that says
+     * 448 and takes 447 is a format with a lie in it. All four cases, because
      * the two endings can disagree: count the CR of a CRLF as content and the
-     * limit is 128 from an assembler and 127 from the DOS editor the CR is
+     * limit is 448 from an assembler and 447 from the DOS editor the CR is
      * there to support, which is not a limit anybody could work to. And both
      * sides of it, so an off-by-one cannot pass by refusing a line somebody is
      * entitled to. */
@@ -1103,17 +1159,162 @@ static void check_block(void)
         }
     }
 
+    /* --- a refusal names the number it is refusing against ---
+     *
+     * The limits are written into the diagnostics as decimal text, because C89
+     * has no way to put a macro's value into a string literal that all five
+     * compilers accept: MSC 5.10 predates # stringification. So the number in
+     * the message is a copy, and a copy drifts. It did: the line limit went
+     * from 128 to 448 and both line diagnostics went on saying 128, which sent
+     * a driver writer to look for a line of a length that was legal.
+     *
+     * Refuse each limit, then look for its number in what came back. This is
+     * the only thing in the tree that reads a diagnostic's words, and it earns
+     * that by being the only way the copy can be checked at all. */
+    {
+        static const struct {
+            const char *what;
+            int         limit;
+            const char *block;
+        } NUMBERED[] = {
+            {"the label limit", DRV_LABEL_SOUND_MAX,
+             "SKIDSETDRV01\nsound\nbrief X\nlabel "
+             "0123456789012345678901234567890123456789\nSKIDSETEND\n"},
+            {"the brief limit", DRV_BRIEF_MAX,
+             "SKIDSETDRV01\nsound\nlabel X\nbrief "
+             "0123456789012345678901234567890123456789\nSKIDSETEND\n"},
+            {"the mode limit", DRV_MODE_MAX,
+             "SKIDSETDRV01\nvideo\nlabel X\nbrief X\nmode "
+             "0123456789012345678901234567890123456789\nSKIDSETEND\n"}};
+        size_t k;
+
+        for (k = 0; k < sizeof NUMBERED / sizeof NUMBERED[0]; k++) {
+            struct drv_blk b2;
+            const char    *why2 = drv_blk_parse(&b2, NUMBERED[k].block);
+            char           num[16];
+            char           what[64];
+
+            sprintf(num, "%d", NUMBERED[k].limit);
+            sprintf(what, "%s says %s", NUMBERED[k].what, num);
+            expect(what, why2 != NULL && strstr(why2, num) != NULL, 1);
+        }
+
+        /* And the line limit, which is the one that drifted. Its block cannot
+         * be a literal, since the shortest thing that trips it is longer than
+         * C89 promises a literal may be. */
+        {
+            static char    toolong[DRV_BLK_LINE_MAX * 2];
+            struct drv_blk b2;
+            const char    *why2;
+            char           num[16];
+            char           what[64];
+            int            n;
+
+            strcpy(toolong, "SKIDSETDRV01\n; ");
+            n = (int)strlen(toolong);
+            memset(toolong + n, 'x', (size_t)DRV_BLK_LINE_MAX);
+            strcpy(toolong + n + DRV_BLK_LINE_MAX, "\nSKIDSETEND\n");
+            why2 = drv_blk_parse(&b2, toolong);
+
+            sprintf(num, "%d", DRV_BLK_LINE_MAX);
+            sprintf(what, "the line limit says %s", num);
+            expect(what, why2 != NULL && strstr(why2, num) != NULL, 1);
+        }
+    }
+
+    /* --- the newline the terminator does need ---
+     *
+     * The grammar writes a block as ending "SKIDSETEND" LF and now means it.
+     * The LF was optional for a block at the end of a file, and this parser
+     * cannot tell that case from any other: what it is handed is a NUL
+     * terminated copy of a chunk, so a NUL inside the binary reads exactly like
+     * end of file, and so does a terminator landing on the last byte of the
+     * read. A block taken on those grounds is one a length-aware reader
+     * refuses, which is the cross-reader ambiguity the token rules exist to
+     * remove.
+     *
+     * The span reader still reports the extent, so the scan moves past a block
+     * it would not take rather than reading it again. */
+    {
+        static const char BARE[] = "SKIDSETDRV01\n"
+                                   "sound\n"
+                                   "label X\n"
+                                   "brief X\n"
+                                   "help Hello there.\n"
+                                   "SKIDSETEND";
+
+        expect_refused("a terminator with no newline after it", BARE);
+        expect("but its span is still the whole of the text",
+               (int)drv_blk_span(BARE), (int)strlen(BARE));
+    }
+
+    /* The same bytes with the newline, which is the only difference. */
+    expect("and with the newline it is a block",
+           drv_blk_parse(&b, "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
+                             "help Hello there.\nSKIDSETEND\n") == NULL,
+           1);
+
+    /* The layout that made the old rule unenforceable: a bare terminator, a NUL
+     * that is not end of file, and bytes after it. A C array holding a string
+     * literal ends in a NUL, so a driver author who left the newline off could
+     * produce exactly this whenever the object was not last in the image. */
+    {
+        static const char WITH_NUL[] = "SKIDSETDRV01\n"
+                                       "sound\n"
+                                       "label X\n"
+                                       "brief X\n"
+                                       "SKIDSETEND\0JUNK";
+
+        expect("the buffer holds more than the string does",
+               (int)sizeof WITH_NUL - 1 > (int)strlen(WITH_NUL), 1);
+        expect_refused("a bare terminator before an embedded NUL", WITH_NUL);
+    }
+
+    /* CR where the grammar does not have one. The branch in next_line() takes
+     * the single CR of a CRLF; anything else is content, so it survives into
+     * the line and the compare or the printable check refuses it. Both of these
+     * were accepted while a trailing CR was stripped after the fact. */
+    expect_refused("a terminator followed by a bare CR",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\nSKIDSETEND\r");
+    expect_refused("a terminator followed by CR CR LF",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\nSKIDSETEND\r\r\n");
+    expect_refused("a bare CR inside a value",
+                   "SKIDSETDRV01\nsound\nlabel A\rB\nbrief X\nSKIDSETEND\n");
+    /* And in a comment, which is the one place a stray CR used to survive: the
+     * printable check exempts comments, so the block was taken while the
+     * specification said any CR but the line ending's is refused. A reader
+     * believing the sentence would have refused what this accepted. */
+    expect_refused("a bare CR inside a comment",
+                   "SKIDSETDRV01\n; note\rhere\nsound\nlabel X\nbrief X\n"
+                   "SKIDSETEND\n");
+    /* A comment may still hold anything else, high bytes included. */
+    expect("a comment may hold bytes no value could",
+           drv_blk_parse(&b, "SKIDSETDRV01\n; caf\351 \200\nsound\nlabel X\n"
+                             "brief X\nSKIDSETEND\n") == NULL,
+           1);
+
+    /* And the other side of it: with no newline between them, the help value
+     * runs into the terminator. This is the failure a driver writer hits by
+     * putting the LF nowhere rather than somewhere, and since the terminator's
+     * letters may not appear inside a line the refusal names that rather than
+     * reporting a block with no end, which is the more useful of the two. */
+    expect_refused("a help value running into the terminator",
+                   "SKIDSETDRV01\nsound\nlabel X\nbrief X\n"
+                   "help Hello there.SKIDSETEND\n");
+
     /* --- how far one block reaches ---
      *
      * src/drvscan.c reads every block in a file and needs to know where to look
-     * for the next one. Past the end of this one: a block may quote the magic
-     * in a comment, as DRVBLOCK.md's own examples do, and starting again inside
-     * one would read the rest of it a second time as though it were another. */
+     * for the next one, and a wrong answer here is a row that never appears. A
+     * span is the whole block or it is nothing: nothing tells the scan to go
+     * back to searching, which is what it must do when the candidate was not a
+     * block at all. */
     expect("a block's span is the whole of it, terminator included",
            (int)drv_blk_span(BLOCK_OK), (int)strlen(BLOCK_OK));
     expect("text with no terminator in it has no span",
            (int)drv_blk_span("SKIDSETDRV01\nsound\n"), 0);
     {
+        static struct drv_blk q;
         static const char QUOTED[] = "SKIDSETDRV01\n"
                                      "sound\n"
                                      "label X\n"
@@ -1121,8 +1322,16 @@ static void check_block(void)
                                      "help this block says SKIDSETEND here\n"
                                      "SKIDSETEND\n";
 
-        expect("and a block quoting the terminator ends where it really ends",
-               (int)drv_blk_span(QUOTED), (int)strlen(QUOTED));
+        /* The span reader and the parser answer different questions about the
+         * same bytes, and this block is where they part: the parser refuses it
+         * for the terminator inside the value, and the span reader still has to
+         * say where it ends, because the scan needs somewhere to resume after a
+         * block it would not take. A span of 0 here would send the scan back to
+         * the start of a block it has already refused. */
+        expect("a block quoting the terminator is refused",
+               drv_blk_parse(&q, QUOTED) != NULL, 1);
+        expect("and still ends where it really ends", (int)drv_blk_span(QUOTED),
+               (int)strlen(QUOTED));
     }
 }
 
@@ -1228,7 +1437,7 @@ static void check_merge(void)
         expect_str("its switch comes from the filename and nowhere else",
                    o->cmd, "/szz ");
         expect_str("its brief has the brackets skidset adds", o->brief,
-                   "(SC-55)");
+                   "(WaveMaster)");
         expect_str("and the file it came from is remembered", o->from,
                    "ZZ15.DRV");
         expect("its index is above every index the original shipped with",
@@ -1301,7 +1510,7 @@ static void check_merge(void)
                last_of(drv_scan_sound())->cmd, "/scb ");
 
     drv_scan_reset();
-    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\ndisk B\n"
+    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\n"
                    "label SVGA graphics\nbrief SVGA\nSKIDSETEND\n",
                    "Load.Exe");
     expect("a mixed case LOAD.EXE is still the video carrier",
@@ -1315,7 +1524,7 @@ static void check_merge(void)
     expect("a video block in a .DRV is skipped", drv_scan_skipped(), 1);
 
     drv_scan_reset();
-    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\ndisk B\n"
+    drv_scan_offer("SKIDSETDRV01\nvideo\nmode SVGA\n"
                    "label SVGA graphics\nbrief SVGA\nSKIDSETEND\n",
                    "LOAD.EXE");
     vt = drv_scan_video();
@@ -1323,7 +1532,10 @@ static void check_merge(void)
     o = last_of(vt);
     expect_str("its fragment is the whole invocation", o->cmd,
                "load.exe /u SVGA ");
-    expect_str("and line 4 is built out of its disk", o->disk, "disk 'B'");
+    /* Line 4 is skidset's, not the block's: a mode a block added gets A,
+     * because the letter only means anything to the original's installer and
+     * that installer will never be asked to install a patched LOAD.EXE. */
+    expect_str("and line 4 is skidset's to write", o->disk, "disk 'A'");
     expect("its index is above every video index the original shipped with",
            o->index >= 5, 1);
 
@@ -1366,14 +1578,14 @@ static void check_merge(void)
      * doing nothing. */
     drv_scan_reset();
     for (i = 0; i < DRV_ROWS_MAX + 2; i++) {
-        char blk[160];
+        char card[160];
         char name[16];
 
         sprintf(name, "X%c15.DRV", (char)('a' + i));
-        sprintf(blk,
+        sprintf(card,
                 "SKIDSETDRV01\nsound\nlabel Card %d\nbrief C%d\nSKIDSETEND\n",
                 i, i);
-        drv_scan_offer(blk, name);
+        drv_scan_offer(card, name);
     }
     expect("the menu stops at ten rows", drv_rows(drv_scan_sound()),
            DRV_ROWS_MAX);
@@ -1435,7 +1647,7 @@ static void check_merge(void)
 
         before = vt->n;
         sprintf(blk,
-                "SKIDSETDRV01\nvideo\nmode %s\ndisk B\nlabel VGA graphics\n"
+                "SKIDSETDRV01\nvideo\nmode %s\nlabel VGA graphics\n"
                 "brief VGA\nSKIDSETEND\n",
                 mode);
         drv_scan_offer(blk, "LOAD.EXE");
@@ -1447,7 +1659,7 @@ static void check_merge(void)
         expect_str("and the brief, with the brackets skidset adds",
                    vt->opt[i].brief, "(VGA)");
         expect_str("and the disk, which is the whole of line 4",
-                   vt->opt[i].disk, "disk 'B'");
+                   vt->opt[i].disk, "disk 'A'");
         expect("while the index stays the one an old SETUP.DAT would name",
                vt->opt[i].index, was);
         expect("and the row is on the menu now that it has a label",
@@ -1476,13 +1688,24 @@ static void check_merge(void)
 #ifdef SK_SCREEN
 
 static const char VBLOCK1[] = "SKIDSETDRV01\n"
-                              "; a comment quoting SKIDSETDRV01 at it\n"
+                              "; a comment, and a legal one: it names the\n"
+                              "; format without quoting either token\n"
                               "video\n"
                               "mode SVGA\n"
-                              "disk B\n"
                               "label SVGA graphics\n"
                               "brief SVGA\n"
                               "SKIDSETEND\n";
+
+/* And an illegal one, for the check that a file's other blocks survive a bad
+ * one. This used to be VBLOCK1 itself, back when a comment could quote the
+ * magic. */
+static const char VBLOCK_QUOTES_MAGIC[] = "SKIDSETDRV01\n"
+                                          "; quoting SKIDSETDRV01 at it\n"
+                                          "video\n"
+                                          "mode QGA\n"
+                                          "label QGA graphics\n"
+                                          "brief QGA\n"
+                                          "SKIDSETEND\n";
 
 static const char VBLOCK2[] = "SKIDSETDRV01\n"
                               "video\n"
@@ -1529,6 +1752,39 @@ static void carrier_of(int blocks)
     fclose(f);
 }
 
+/* One "these bytes must not hide the block behind them" case: write before,
+ * then a valid video block, scan, and require the row. The magic is found by
+ * matching twelve raw bytes, so anything can precede a real block and none of
+ * it may make that block invisible. */
+static void hider_case(const char *what, const char *before_bytes, int before)
+{
+    const struct drv_tab *vt;
+    FILE                 *f = fopen("LOAD.EXE", "wb");
+    char                  msg[80];
+
+    if (f == NULL) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+    fputs(before_bytes, f);
+    fputs(VBLOCK2, f);
+    if (fclose(f) != 0) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+    drv_scan();
+    vt = drv_scan_video();
+    sprintf(msg, "%s does not hide the block after it", what);
+    expect(msg, vt->n, before + 1);
+    if (vt->n == before + 1) {
+        expect_str("and it is the good one", vt->opt[before].cmd,
+                   "load.exe /u XGA ");
+    }
+    drv_scan_reset();
+}
+
 static void check_scan(void)
 {
     const struct drv_tab *vt;
@@ -1567,37 +1823,179 @@ static void check_scan(void)
     if (vt->n == before + 2) {
         expect_str("the first block's mode, found past 32767 bytes in",
                    vt->opt[before].cmd, "load.exe /u SVGA ");
-        expect_str("and its disk", vt->opt[before].disk, "disk 'B'");
+        expect_str("and its disk", vt->opt[before].disk, "disk 'A'");
         expect_str("the second block, which the first must not have hidden",
                    vt->opt[before + 1].cmd, "load.exe /u XGA ");
         expect("their indices differ",
                vt->opt[before].index != vt->opt[before + 1].index, 1);
     }
 
-    /* Where it stops reading blocks out of one file, and the difference
-     * between reporting that and claiming it. DRV_ROWS_MAX blocks is the whole
-     * menu and is not a cutoff; the file was read to the end. One more is, and
-     * has to say so. */
-    carrier_of(DRV_ROWS_MAX);
+    /* One bad block in a file does not cost the others. This is what the span
+     * reader is for: a block refused for quoting a token still says where it
+     * ends, so the scan resumes after it rather than inside it, and the good
+     * block that follows is read. Put the bad one first, since a scan that gave
+     * up on the file would then find nothing at all. */
+    f = fopen("LOAD.EXE", "wb");
+    if (f == NULL) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+    fputs(VBLOCK_QUOTES_MAGIC, f);
+    fputs(VBLOCK2, f);
+    if (fclose(f) != 0) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
     drv_scan();
-    expect("a carrier with exactly a menu's worth of blocks is not cut off",
-           skip_saying("more blocks"), 0);
-    expect("and the list did not overflow, so that means what it says",
-           drv_scan_skipped() < DRV_SCAN_SKIP_MAX, 1);
+    vt = drv_scan_video();
+    expect("a block quoting the magic is skipped and named",
+           skip_saying("SKIDSETDRV01"), 1);
+    expect("and the good block after it is still read", vt->n, before + 1);
+    if (vt->n == before + 1) {
+        expect_str("which is the one that follows the bad one",
+                   vt->opt[before].cmd, "load.exe /u XGA ");
+    }
+    drv_scan_reset();
 
-    carrier_of(DRV_ROWS_MAX + 1);
+    /* --- a candidate that is not a block must not hide one that is ---
+     *
+     * The magic is found by matching twelve raw bytes, so what turns up is a
+     * candidate. Three shapes of candidate can precede a real block, and each
+     * one used to swallow it: the span reader walked to the first terminator
+     * downstream, which belonged to the good block, and the scan resumed past
+     * it. The row simply never appeared.
+     *
+     * These are file-level rather than parser-level on purpose. drv_blk_span()
+     * alone cannot show the failure; it takes the search, the span and the
+     * resume together, which is drv_scan(). */
+    /* Written as calls rather than as a table of them. An array of these with
+     * five entries and their strings built cleanly under every compiler and
+     * then produced a Microsoft C 5.10 binary that linked, ran and wrote not
+     * one byte, which is the shape of a program dying before main. Four entries
+     * were fine. Nothing here needs an aggregate, so it does not have one. */
+    hider_case("raw magic with a suffix", "SKIDSETDRV01-not-a-block\n", before);
+    hider_case("a magic line with no terminator",
+               "SKIDSETDRV01\nsound\nlabel unterminated\n", before);
+    hider_case("the magic buried in binary", "\001\002SKIDSETDRV01\003\004",
+               before);
+    /* A proper magic line, no terminator, and the good block's magic arriving
+     * mid-line behind arbitrary bytes. Nothing requires a newline before a
+     * block, so this is legal and the good block begins in the middle of what
+     * this candidate reads as one line. A span reader comparing whole lines
+     * finds no second magic and walks on to the good block's terminator. */
+    hider_case("a magic mid-line behind a prefix",
+               "SKIDSETDRV01\nsound\nlabel Broken\nbrief Broken\nprefix",
+               before);
+    /* The framing rule's own boundary: a bare terminator with the next block's
+     * magic run straight onto it, so neither token is a whole line. */
+    hider_case("a bare terminator run onto the next magic",
+               "SKIDSETDRV01\nsound\nlabel Broken\nbrief Broken\nSKIDSETEND",
+               before);
+
+    /* Many false candidates ahead of the good block. They must not spend the
+     * menu's budget: the limit is on blocks, and none of these is one. */
+    f = fopen("LOAD.EXE", "wb");
+    if (f == NULL) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
+    for (i = 0; i < DRV_ROWS_MAX + 2; i++) {
+        fputs("SKIDSETDRV01-no\n", f);
+    }
+    fputs(VBLOCK2, f);
+    if (fclose(f) != 0) {
+        printf("FAIL  cannot write a LOAD.EXE to scan\n");
+        failures++;
+        return;
+    }
     drv_scan();
-    /* Either the cutoff line is there or the list filled up and said how many
-     * it could not name. Both are the promise being kept; which one happens
-     * depends on how many of the blocks this build's table had room for, and
-     * that is the build's business. */
-    expect("one block more than that is reported",
-           skip_saying("more blocks") ||
-               drv_scan_skipped() == DRV_SCAN_SKIP_MAX,
-           1);
+    vt = drv_scan_video();
+    expect("a dozen false candidates do not spend the block budget", vt->n,
+           before + 1);
+    expect("nor report the file as holding too many",
+           skip_saying("more blocks"), 0);
+    drv_scan_reset();
+
+    /* A carrier holding far more blocks than the menu can seat. There is no cap
+     * on how many a LOAD.EXE may carry, so what has to hold is that the screen
+     * is the only thing that runs out, and that it says so rather than the scan
+     * claiming to have stopped reading. */
+    carrier_of(DRV_ROWS_MAX * 3);
+    drv_scan();
+    /* drv_rows and not ->n: the table holds the unlabelled VGA entry as well,
+     * and what the menu runs out of is drawn rows. */
+    expect("a carrier past the menu's capacity fills what there is",
+           drv_rows(drv_scan_video()), DRV_ROWS_MAX);
+    expect("and the rest are refused for the room, not for a block count",
+           skip_saying("no room"), 1);
+    expect("with nothing claiming the file was only partly read",
+           skip_saying("more blocks"), 0);
 
     remove("LOAD.EXE");
     drv_scan_reset();
+
+    /* --- a driver carries one block ---
+     *
+     * Everything above scans LOAD.EXE, which is the carrier that may hold
+     * several blocks. A .DRV may hold one, and that is the path every real
+     * sound driver takes, so both halves of it are asked here: one block is
+     * offered, and two refuse the file rather than reporting the second as a
+     * duplicate command, which named the symptom instead of the fault.
+     *
+     * QQ and not ZZ. The example row in drvtab.h is ZZ15.DRV, so a fixture of
+     * that name is a duplicate of a row the extra configuration compiles in and
+     * these checks passed against one table and failed against another. No
+     * table in the tree claims QQ. */
+    {
+        static const char     ONE[] = "SKIDSETDRV01\n"
+                                      "sound\n"
+                                      "label Acme WaveMaster 16\n"
+                                      "brief WaveMaster\n"
+                                      "SKIDSETEND\n";
+        static const char     TWO[] = "SKIDSETDRV01\n"
+                                      "sound\n"
+                                      "label First card\n"
+                                      "brief First\n"
+                                      "SKIDSETEND\n"
+                                      "SKIDSETDRV01\n"
+                                      "sound\n"
+                                      "label Second card\n"
+                                      "brief Second\n"
+                                      "SKIDSETEND\n";
+        const struct drv_tab *st;
+        int                   sbefore = drv_sound.n;
+
+        if (write_text("QQ15.DRV", ONE) != 0) {
+            printf("FAIL  cannot write a QQ15.DRV to scan\n");
+            failures++;
+        } else {
+            drv_scan();
+            st = drv_scan_sound();
+            expect("one block in a .DRV is offered", st->n, sbefore + 1);
+            if (st->n == sbefore + 1) {
+                expect_str("with the switch its filename gives",
+                           st->opt[sbefore].cmd, "/sqq ");
+            }
+            expect("and nothing is skipped", drv_scan_skipped(), 0);
+            drv_scan_reset();
+        }
+
+        if (write_text("QQ15.DRV", TWO) != 0) {
+            printf("FAIL  cannot write a QQ15.DRV to scan\n");
+            failures++;
+        } else {
+            drv_scan();
+            st = drv_scan_sound();
+            expect("two blocks in a .DRV offer neither", st->n, sbefore);
+            expect("and the file is named as carrying more than one",
+                   skip_saying("one block"), 1);
+            drv_scan_reset();
+        }
+        remove("QQ15.DRV");
+    }
 }
 
 /* More .DRV files than the scan can hold.
@@ -1665,6 +2063,51 @@ static void check_directory(void)
 
 #endif /* SK_SCREEN */
 
+/* ------------------------------------------- a held block, and what stops it
+ *
+ * A .DRV's one block is held until the file has been walked, so there is a gap
+ * between finding it and offering it, and three things can go wrong in that
+ * gap. None can be arranged with a real file: they want a floppy that stops
+ * answering halfway, or a file that changes between two reads. So the decision
+ * is asked directly, which is why it is a function with a name rather than a
+ * condition inside the loop.
+ *
+ * Outside the SK_SCREEN section on purpose. drv_scan_hold() is three integers
+ * in and a verdict out, and it lived in the DOS and Win32 half where a Linux
+ * build compiled neither it nor these checks. The policy is what kept a driver
+ * from being offered off a file nobody finished reading, so it should be
+ * exercised wherever the sanitizers run and not only where there is a
+ * directory.
+ *
+ * The rule is fail closed. A row is offered only when the walk reached the end
+ * of the file and the reread found the block where it was left. */
+static void check_hold(void)
+{
+    printf("\n--    a held block\n");
+
+    expect("nothing held is nothing to do", drv_scan_hold(1, -1L, -1L),
+           DRV_HOLD_NONE);
+    expect("a finished walk and an agreeing reread offers the row",
+           drv_scan_hold(1, 512L, 512L), DRV_HOLD_OFFER);
+    /* The one that used to offer the row anyway. A walk that stopped early
+     * never proved the file holds one block: a second may sit past the point
+     * the medium stopped answering. */
+    expect("a walk that stopped early offers nothing",
+           drv_scan_hold(0, 512L, -1L), DRV_HOLD_PARTIAL);
+    /* And it is decided before the reread is looked at, so a reread that
+     * happens to agree cannot rescue an unfinished walk. These two were the
+     * same call with two labels, which made one case look like two. */
+    expect("even when a reread would have agreed", drv_scan_hold(0, 512L, 512L),
+           DRV_HOLD_PARTIAL);
+    /* These two used to drop the block with no diagnostic at all. */
+    expect("a reread that fails is reported", drv_scan_hold(1, 512L, -2L),
+           DRV_HOLD_UNREAD);
+    expect("a reread that lands elsewhere is reported",
+           drv_scan_hold(1, 512L, 640L), DRV_HOLD_MOVED);
+    expect("and a reread that finds nothing is not silent either",
+           drv_scan_hold(1, 512L, -1L) != DRV_HOLD_OFFER, 1);
+}
+
 /* ------------------------------------------------- drivers that are not there
  *
  * A row whose driver file is absent writes a perfectly good SETUP.DAT and then
@@ -1678,8 +2121,8 @@ static void check_directory(void)
 /* Every file this build's table asks for, created empty or removed. Driven off
  * the table rather than off a list of names, because a build is free to change
  * the table and this check has to hold of whatever it finds: the first version
- * of it named the four stock drivers and went red the moment the SC-55 entry
- * was switched on and a seventh row wanted SC15.DRV. */
+ * of it named the four stock drivers and went red the moment the example entry
+ * was switched on and a seventh row wanted a fifth file. */
 static void drivers_on_disk(int present)
 {
     int i;
@@ -2052,17 +2495,31 @@ static int hide(const char *path)
     return SetFileAttributesA(path, FILE_ATTRIBUTE_HIDDEN) != 0;
 }
 
+static int hidden_now(const char *path)
+{
+    DWORD a = GetFileAttributesA(path);
+
+    return a != (DWORD)-1 && (a & FILE_ATTRIBUTE_HIDDEN) != 0;
+}
+
 static void unhide(const char *path)
 {
     SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
 }
 #    elif defined(__TURBOC__)
 /* Turbo C has no _dos_setfileattr. _chmod with func 1 sets the attribute and
- * the constants are the FA_ ones, not the _A_ ones. */
+ * the constants are the FA_ ones, not the _A_ ones. Func 0 reads it back. */
 #        include <io.h>
 static int hide(const char *path)
 {
     return _chmod(path, 1, FA_HIDDEN) != -1;
+}
+
+static int hidden_now(const char *path)
+{
+    int a = _chmod(path, 0);
+
+    return a != -1 && (a & FA_HIDDEN) != 0;
 }
 
 static void unhide(const char *path)
@@ -2073,6 +2530,13 @@ static void unhide(const char *path)
 static int hide(const char *path)
 {
     return _dos_setfileattr(path, _A_HIDDEN) == 0;
+}
+
+static int hidden_now(const char *path)
+{
+    unsigned a = 0;
+
+    return _dos_getfileattr(path, &a) == 0 && (a & _A_HIDDEN) != 0;
 }
 
 static void unhide(const char *path)
@@ -2101,6 +2565,17 @@ static void check_hidden(void)
 
     if (!hide(NAME)) {
         printf("skip  cannot set the hidden attribute on %s\n", NAME);
+        remove(NAME);
+        return;
+    }
+    /* Asking is not enough, so the bit is read back. Under DOSBox on a host
+     * whose own filesystem has no hidden attribute, setting it is reported as
+     * success and stores nothing, and the two walks below then disagree about a
+     * file that was never hidden. That is the emulator's floor, not this
+     * program's failure, so it is a skip and not a verdict. */
+    if (!hidden_now(NAME)) {
+        printf("skip  the hidden attribute does not stick on %s here\n", NAME);
+        unhide(NAME);
         remove(NAME);
         return;
     }
@@ -2257,6 +2732,7 @@ int main(void)
     check_classify();
     check_hidden();
 #endif
+    check_hold();
     check_missing();
     check_fallback();
 #ifdef DRV_TABLE_STOCK
