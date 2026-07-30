@@ -40,6 +40,10 @@ function flush_para(   n, line, word, i, words, pre) {
 function clean(s) {
     gsub(/\*\*/, "", s)
     gsub(/`/, "", s)
+    # A markdown escape is markup too. \* renders as a bare asterisk in a
+    # browser and used to reach the text file with its backslash still on.
+    gsub(/\\\*/, "*", s)
+    gsub(/\\_/, "_", s)
     while (match(s, /\[[^]]*\]\([^)]*\)/)) {
         t = substr(s, RSTART, RLENGTH)
         lb = index(t, "]")

@@ -12,13 +12,17 @@
 /selfcheck
 /selfcheck.exe
 /selfcheck-extra
+/selfcheck-extra.exe
 /selfcheck-min
+/selfcheck-min.exe
 /drvtab.bak
 *.o
 *.obj
 *.OBJ
 *.map
 *.MAP
+*.err
+*.ERR
 
 # What a release generates and packages. None of it is source, and the last
 # rename put a 78 KB executable in a commit because this file still named the

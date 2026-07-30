@@ -5,6 +5,8 @@ drop-in replacement for the `SETUP.EXE`.
 
 ![The allegedly Roland Sound Canvas driver, on the sound menu](doc/snddrv.png)
 
+\* The allegedly Roland Sound Canvas driver, on the sound menu.
+
 ## Use
 
 Copy `SKIDSET.EXE` into the game directory and run it.
@@ -20,11 +22,7 @@ it supports additional command line arguments for specific controls:
     /V   show the version
     /?   show this help
 
-Only `SKIDSET.EXE` takes `SETUP.EXE`'s name. It is the 16-bit build and runs
-anywhere the game does, which is the whole point of installing at all.
-`SKIDST32.EXE` refuses: it would leave a directory needing a 386 to configure
-a game that runs on an 8086. Run either one directly whenever you like, and
-`/U` works from either.
+**Note:** Only the 16-bit DOS version of `SKIDSET.EXE` can replace `SETUP.EXE`.
 
 ## What it offers
 
@@ -50,7 +48,6 @@ and described as an example:
     label Roland Sound Canvas
     brief Sound Canvas
     help Select if you have a Roland Sound Canvas on the MPU-401 port.
-    help Requires an SC-55 or compatible.
     SKIDSETEND
 
 This format is governed by [DRVBLOCK.md](DRVBLOCK.md). Documentation is
@@ -83,11 +80,7 @@ looks for the compiler in the default location.
 
     WCLBUILD WIN32    Open Watcom 1.9, Win32 console
 
-Produces `SKIDSTW.EXE`, which a release ships as `skidset.exe`. Run it from the
-command prompt. It uses the console API Win32 has had since the beginning, so
-it ought to run on anything back to Windows 95, but the oldest Windows it has
-actually been run on is Windows 11. Take the older ones as untested rather
-than supported.
+Runs on Windows 95 / NT 4.0 and later.
 
 Any modern toolchain should work with the Makefile. Example with MinGW-w64:
 
@@ -105,7 +98,7 @@ and also checks that every text in the interface fits the window it opens in.
 ## Credits
 
 - [restunts](https://github.com/4d-stunts/restunts), for the decompilation of
-  the game: knowledge source and where we could guess the original toolchain.
+  the game.
 
 ## Acknowledgements
 
@@ -119,11 +112,9 @@ MIT. See [LICENSE](LICENSE).
 
 ### Third-party software
 
-`SKIDST32.EXE` has the DOS/32A extender linked into it as its stub, which is
-what lets one file run on a 386 with nothing else installed.
-
 This product uses DOS/32 Advanced DOS Extender technology.
 
+`SKIDST32.EXE` has the DOS/32A extender linked into it as its stub.
+
 Its copyright notice, conditions and disclaimer are in `DOS32A.TXT`, which
-ships inside the DOS archive. `SKIDSET.EXE` and the Win32 build do not
-include it.
+ships inside the DOS archive.
