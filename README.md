@@ -5,7 +5,7 @@ drop-in replacement for the `SETUP.EXE`.
 
 ![The allegedly Roland Sound Canvas driver, on the sound menu](doc/snddrv.png)
 
-\* The allegedly Roland Sound Canvas driver, on the sound menu.
+\* The *allegedly* Roland Sound Canvas driver, on the sound menu.
 
 ## Use
 
