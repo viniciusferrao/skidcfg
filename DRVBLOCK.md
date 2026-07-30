@@ -1,311 +1,159 @@
 # Driver block specification
 
-Version 1. Magic `SKIDSETDRV01`.
+**Version 1:** Magic token `SKIDSETDRV01`.
 
-A driver describes itself to `skidset` by carrying a block of text inside
-its own binary. `skidset` scans the game directory, reads the blocks and
-adds a menu row for each. No rebuild of `skidset`, no file beside the
-driver.
+A driver describes itself to `skidset` by carrying a block of text metadata
+inside its own binary. `skidset` searches every `*.DRV` in the game directory
+for the magic token, and `LOAD.EXE` as well. Each block found shows up in the
+setup program.
 
-A row exists only while its driver file is on the disk. A `SETUP.DAT`
-naming a driver that is not there stops the game: `LOAD.EXE` prints
-`Can't find driver!`, waits for a key and returns to DOS.
-
-
-## 1. Example
+## 1. Example block
 
 ```
 SKIDSETDRV01
+; ZZ15.DRV - Acme WaveMaster 16 driver for Stunts 1.1
+; Copyright (c) 2026 A. Driver Author. MIT licence.
 sound
-label Roland Sound Canvas
-brief Sound Canvas
-help Select if you have a Roland Sound Canvas on the MPU-401 port.
-help Requires an SC-55 or compatible.
+label Acme WaveMaster 16
+brief WaveMaster
+help Select if you have an Acme WaveMaster 16 at its factory address.
 SKIDSETEND
 ```
-
-Complete and valid, and the block `SC15.DRV` ships.
-
 
 ## 2. Grammar
 
 ```
 block   = "SKIDSETDRV01" LF *line "SKIDSETEND" LF
 line    = entry / comment / blank
-entry   = key [ SP value ] LF
-comment = *SP ";" *CHAR LF
+entry   = *WSP key [ 1*SP value ] *WSP LF
+key     = 1*VCHAR
+value   = VCHAR *( SP / VCHAR )
+comment = *WSP ";" *( %x01-09 / %x0B-0C / %x0E-FF ) LF
+blank   = *WSP LF
 ```
 
-- `SKIDSETDRV01` and `SKIDSETEND` each occupy a whole line. Nothing may
-  follow either on its line.
-- Bytes before the magic are not examined, so a block may be appended to a
-  finished binary.
-- A key is a key only at the start of a line. Inside a value the key words
-  are ordinary text.
-- A value is the rest of the line with leading and trailing spaces removed.
-  No quoting, no escapes.
-- Keys may appear in any order. `help` lines are read in the order they
-  appear.
-- A key given twice is an error, not an override. `help` is the exception.
-- An unknown key is ignored. See section 7.
-- Blank lines and comment lines are ignored. Both count against the limits
-  in section 4.
-- Lines end with LF (`0Ah`). A CR before the LF is accepted and discarded.
-  The line ending is not part of the line, so the 128 character limit is
-  128 characters under LF and CRLF alike.
-- Values are seven-bit ASCII, `20h` to `7Eh`. Any other byte is refused,
-  tab included: the text is drawn under whatever code page the machine
-  booted with, and 437, 850 and 860 disagree above `7Eh`. Comments are
-  exempt, being never drawn.
-
-Because a key is only recognised at the start of a line, this is a valid
-block, terminator included:
-
-```
-help The sound and video label on this card
-help needs no help; brief mode disk SKIDSETEND
-```
-
-A line whose first non-blank character is `;` is a comment. There is no
-key for authorship; sign the driver in comments.
-
-```
-; SC15.DRV - Roland Sound Canvas driver for Stunts 1.1
-; Copyright (c) 2026 Vinicius Ferrao. MIT licence.
-; https://github.com/viniciusferrao/skidsc55
-```
-
+- `SKIDSETDRV01` and `SKIDSETEND` each must occupy a full line, those are the
+  delimiters, so they can only appear once in a block.
+- The token is compared exactly as it stands, no spaces or special characters.
+- They cannot appear anywhere else in the block either, in a comment no more
+  than in a value.
+- Bytes before the magic token aren't examined.
+- `SP`, `WSP` and `VCHAR` are ABNF's own: a space, a space or a tab, and the
+  printable characters `0x21` to `0x7E`.
+- A key can only be a key at the start of a line, and spaces or tabs around a
+  line come off before anything looks for one. The two token lines are the
+  exception, being compared as they stand.
+- A value is the remaining of that line.
+- Keys may appear in any order inside the magic block.
+- A key given twice is an error, not an override.
+- Unknown keys are ignored including the text up to the line finish.
+- Blank lines and comment lines are ignored, but they count against the block
+  limits.
+- A comment is a line whose first non-blank character is `;`.
+- Every line of the block ends with `LF` (`0x0A`), the terminator included.
+- A `CR` immediately before that `LF` is dropped. Any other `CR` is refused.
+- Values hold ASCII printable characters only, `0x20` to `0x7E`. A comment is
+  exempt from this rule.
+- A line holds at most 448 characters, not counting the line ending. 448 is
+  accepted and 449 is refused.
 
 ## 3. Keys
 
-| key | required | value | use |
+| key | required | type | value |
 |---|---|---|---|
-| `sound` / `video` | exactly one | none | which menu |
-| `label` | yes | text | submenu row |
-| `brief` | yes | text | main menu row |
-| `help` | no | text | F1 paragraph, repeatable |
-| `mode` | video only | text | everything after `/u` |
-| `disk` | video only | `A` or `B` | game disk the mode came from |
+| `sound` or `video` | exclusive or | none | none |
+| `label` | true | string | full name of the driver |
+| `brief` | true | string | short name of the driver |
+| `help` | false | string | help text to be shown in the interface |
+| `mode` | video only | string | appended after `/u` on `LOAD.EXE` |
 
-### 3.1 label and brief
+### Notes
 
-Both are drawn and they are not the same string. `label` is the row inside
-the open submenu. `brief` is the reminder on the main menu row when the
-submenu is shut:
+* If `help` is not given the setup program shows `No Help Available`.
 
-```
-   Video display                                 (MCGA)
-   Sound option                          (Sound Canvas)
-```
+* `mode` must include the full string to the `/u` argument, such as: `VGA` or
+  `CGA /h`.
 
-Write `brief` bare. `skidset` adds the brackets, so `Sound Canvas` gives
-`(Sound Canvas)`, and a `brief` containing a bracket is refused rather than
-doubled. There is no default. The stock rows are the house style, shortest
-name still unambiguous: `No sound`, `PC speaker`, `Tandy`, `Ad Lib`,
-`Sound Blaster`, `MT-32`. Note what that costs the manufacturer rather than
-the model: `Roland MT-32` shows as `(MT-32)`.
-
-### 3.2 help
-
-Lines are trimmed and joined with exactly one space, so a trailing space
-can neither run two words together nor open a double gap. One long line
-and several short ones mean the same thing. A `help` with no value is a
-blank line and starts a new paragraph. A block with no `help` at all gets
-`No Help Available`, which is what the original shows for a row it has
-nothing to say about.
-
-### 3.3 mode
-
-The whole argument after `/u`, flags included. `SVGA` for a mode with no
-flags; `VGA /v` for the row the original ships, whose command line is
-`load.exe /u VGA /v `.
-
-A block naming exactly that command line fills in the original's
-unlabelled VGA row and keeps index 5, which is the number an existing
-`SETUP.DAT` already uses. `mode VGA` is a different command line and
-therefore a different mode: its own row, its own index, and it will not
-start the game unless `LOAD.EXE` also knows a `VGA` without the flag.
-Nothing warns about this, because nothing is wrong with it.
-
+* The first word of `mode` names a file: `XPTO.COD`, so it must be in 8.3
+  format.
 
 ## 4. Limits
 
-Every limit is checked. Nothing is truncated to fit. Exceeding one is an
+Every limit is checked and nothing is truncated to fit. Exceeding one is an
 error naming the file, the field and the number.
 
-| field | limit | source |
-|---|---|---|
-| `label`, sound | 31 | submenu window, columns 12 to 42 |
-| `label`, video | 24 | submenu window, columns 14 to 37 |
-| `brief` | 21, no brackets | 23 on screen with the brackets |
-| `mode` | 16 | keeps `SETUP.DAT` line 2 inside 80 |
-| `disk` | 1, `A` or `B` | it is a disk label |
-| longest `help` word | 26 | a longer one cannot be wrapped |
-| `help`, wrapped | 15 lines of 26 | help window interior |
-
-The help window's interior is columns 49 to 74, which is the 26. Its
-height is one row per wrapped line, growing from row 7 until its shadow
-would reach the footer on row 24, which is the 15. Both are
-`DRV_HELP_COLS` and `DRV_HELP_ROWS` in `src/drivers.h`.
-
-What the parser will hold, so a block cannot make it read past anything:
-
-| | limit |
+| field | limit |
 |---|---|
-| whole block, magic and terminator included | 2048 bytes |
-| any single line | 128 characters |
-| lines in the block | 64 |
-| `help` keys, before joining | 32 |
-
-A block that runs past 2048 bytes with no `SKIDSETEND` is not a block.
-
-Each menu holds ten rows, a window growing one row per entry until its
-shadow has to clear the footer. Six sound rows and five video modes are
-built in, so four sound drivers and five video modes can be added. An
-eleventh is refused and named rather than dropped off the screen.
+| `label`, sound | 31 characters |
+| `label`, video | 24 characters |
+| `brief` | 21 characters |
+| `mode` | 16 characters |
+| `help` after wrapping | 15 rows of 26 columns |
+| max word size in `help` | 26 characters |
 
 
-## 5. Where blocks are found
-
-`skidset` reads, in the current directory:
-
-- every `*.DRV`, where a block describes a sound driver
-- `LOAD.EXE`, where a block describes a video mode
-
-It opens nothing else, and the only file it writes is `SETUP.DAT`.
-
-The scan is 8.3 names and nothing else. A driver's switch is two characters
-of its filename, so a name that does not fit 8.3 cannot be a driver identity
-at all. On a host that allows longer names such a file is passed over
-silently rather than listed as skipped: it was never a candidate to begin
-with.
-
-A block may sit anywhere in the file. The whole image is searched in
-overlapping reads, so a magic across a read boundary is still found. No
-required offset, no header, no pointer table.
-
-Every block in a file is read, in order. The search for the next begins
-past the previous `SKIDSETEND`, so a block may quote the magic in a
-comment. Ten blocks in one file is where it stops looking, and it says so.
-
-The four drivers Stunts 1.1 ships carry no block. Their six sound rows are
-built into `src/drvtab.h`.
-
-### 5.1 Why video modes live in LOAD.EXE
-
-A mode is not a driver. It is a `/u NAME` switch, a `NAME.COD` holding
-about fifty kilobytes of graphics code, a thirty byte `NAME.HDR`, and the
-name itself, which is inside `LOAD.EXE`: `CGA.COD` and `CGA.HDR` copied to
-`ZZ.COD` and `ZZ.HDR` and asked for as `/u ZZ` does not start the game,
-while `/u CGA` beside it does.
-
-Adding a mode means patching `LOAD.EXE`, which is therefore the only
-binary that can honestly describe one, and is why `mode` is required:
-there is no filename to derive it from.
-
-`skidset` derives `NAME` from `mode` and takes the row off the menu when
-`NAME.COD` or `NAME.HDR` is missing. Without that the game stops with
-`Unable to size NAME.hdr.`
-
-
-## 6. What the block does not carry
-
-### 6.1 The command line switch
-
-`LOAD.EXE` derives the driver's filename from the switch: `/sxx` loads
-`XX15.DRV`. The switch is the filename, and `skidset` works it out. Two
-drivers cannot propose the same switch, because two files cannot share a
-name in one directory.
-
-- Exactly two characters. `LOAD.EXE` reads two after `/s` and discards the
-  rest, so `/sscsb` does not fail: it loads `SC15.DRV` while looking like
-  it asks for something else. A driver named `SCSB15.DRV` can never be
-  reached, so `skidset` refuses to put one on a menu and says why.
-- Either character may be a letter or a digit, in any order. `M015.DRV`,
-  `0415.DRV`, `4X15.DRV`, `7E15.DRV` and `X415.DRV` all answer to their
-  own switch. Two characters is the whole namespace, so a scheme that
-  numbers its drivers has nowhere else to put the number.
-- Two is also all the voice banks allow. They are `<prefix>SKIDMS.VCE`,
-  and `SKIDMS` is six characters, so `SCSKIDMS.VCE` is exactly the eight
-  that 8.3 permits.
-- `LOAD.EXE` knows some switches already and overrides the derivation for
-  them: `/ssb` loads `AD15.DRV`, and an `SB15.DRV` beside it is never
-  opened. There is no way to enumerate these from outside. Test a prefix
-  before committing to it, by putting the driver under the name, removing
-  anything it might fall back to, and checking that the game plays it.
-
-| prefixes | status |
+| data specifics | limit |
 |---|---|
-| `PC` `AD` `MT` `TD` | the drivers the game ships |
-| `SC` | skidsc55 |
-| `SB` | claimed by `LOAD.EXE`, unusable |
-| `GM` `GU` `CB` `X0` `XS` `M0` `04` `4X` `7E` `X4` | tried, free |
+| full block size | 1024 bytes |
+| any single line | 448 characters |
 
-A name is an identity, not a description. `label` and `brief` are the
-description.
+1024 is the buffer a block is read into. However there is no limit on the number
+of lines, so comments cost only the bytes they use. The largest possible block
+carrying none at all is a little over 500 bytes, a video one being the larger of
+the two shapes for having a `mode` line. That leaves enough space for a
+signature, comments, notes and license.
 
-### 6.2 The menu index
+The 448 characters restriction counts the whole line, including the key and
+separating space.
 
-`skidset` allocates the number it writes to line 1 of `SETUP.DAT`, in a
-fixed order, starting above the stock rows.
+## 5. The driver's filename
 
-Line 1 does not identify a driver. Line 2 does: it is the command line the
-game obeys, and `skidset` matches on that string. Line 1 is a hint used
-only when line 2 cannot be read, and `skidset` says so when it falls back
-to it. Sound 0 to 5 and video 0 to 4 stay nailed to the stock rows for
-ever, so a `SETUP.DAT` written by the original `SETUP.EXE` in 1991 still
-means what it meant.
+A sound driver have the following pattern:
 
-### 6.3 The rest of SETUP.DAT, and the help window
+    `XX15.DRV`
 
-`skidset` builds line 2 from the video and sound fragments with the
-spacing the game expects, and line 4 from `disk`. The `help` text is one
-paragraph: `skidset` wraps it to the window and takes the window's height
-from how many lines that came to.
+Where XX can be two alphanumeric characters. The value used there is the same
+passed to `LOAD.EXE` in the audio driver `/s` argument, like: `/sxx`
 
-### 6.4 A second sound device
+| prefix | driver | native | what it is |
+|---|---|---|---|
+| `PC` | `PC15.DRV` | true | PC speaker |
+| `AD` | `AD15.DRV` | true | Ad Lib |
+| `MT` | `MT15.DRV` | true | Roland MT-32 |
+| `TD` | `TD15.DRV` | true | Tandy |
+| `SB` | `AD15.DRV` | true | Sound Blaster (which uses the Ad Lib driver) |
+| `SC` | `SC15.DRV` | false | Roland Sound Canvas, from [skidsc55](https://github.com/viniciusferrao/skidsc55) |
 
-The game takes one. Its command line accepts more than one `/s` and the
-last wins: `/ssc /sad` plays the Ad Lib, `/sad /ssc` plays the Sound
-Canvas. No `SETUP.DAT` can ask for music on one card and effects on
-another, and the format will not grow a way to describe one.
+`SB` is a special case of a prefix that is not free and does not name a file of
+its own. The game offers Sound Blaster as a menu row and loads `AD15.DRV` for it.
 
-A driver that splits music and effects across two devices is one driver
-like any other: one file, one switch, one row, its own two voice banks.
-The combining happens inside the driver, which is the only thing the game
-gives the job to.
+## 6. Versioning
 
+The version of the format is the last two characters of the magic token:
 
-## 7. Versioning
+    SKIDSETDRVXX
 
-Additive change: an unknown key is ignored, so a later version may add an
-optional key and a driver carrying it still works with every `skidset`
-released before. This is why there are no reserved bytes. A text format
-extends by gaining a word.
+Where `XX` is replaced with the version the block is written to.
 
-Breaking change: a new meaning for an existing key, or a different rule
-for an existing value, takes `SKIDSETDRV02`. An older `skidset` does not
-recognise the magic, skips the block whole, and the row does not appear. A
-driver missing from a menu is recoverable; a driver described wrongly on
-one is not.
+The correct implementation of a reader must match the whole token. So a block
+written to a later version is skipped rather than read wrongly, and a reader of
+that version can take both. That is for a change this format cannot absorb, such
+as a new meaning for a key that already exists.
 
-The `01` is part of the magic. Nothing counts or compares it: a reader
-matches the whole string or does not.
+Most changes the version scheme can absorb, since an unknown key is ignored: an
+extension that only adds an optional key needs no new token, and a driver
+carrying that key still works with every `skidset` released before it.
 
-A misspelt required key is refused for that key being missing. A misspelt
-`help` gives `No Help Available`.
+We avoid breaking backwards compatibility.
 
+## 7. Diagnostics
 
-## 8. Diagnostics
+`skidset` reports what it read. A block that is malformed, exceeds a limit, or
+finds no room on the menu is skipped, and the file and the reason are named.
+Nothing is silent.
 
-A block that is malformed, exceeds a limit, or has nowhere left on the
-menu is skipped, and `skidset` names the file and the reason. Nothing is
-silent.
-
-`SKIDSET /D` prints the merged table and exits without opening the setup
-screen. The only other symptom of a bad block is a row that is not there,
-which looks identical whether `skidset` never opened the file, found no
-block in it, or read a block and refused it.
+The `/D` option shows the merged table and is the interface that reports any
+problem with a driver file.
 
 ```
 C:\STUNTS>SKIDSET /D
@@ -317,7 +165,7 @@ Sound
    3  /sad      built in  Ad Lib card (Ad Lib)
    4  /ssb      built in  Sound Blaster card (Sound Blaster)
    5  /smt      built in  Roland MT-32 (MT-32)
-   6  /ssc      SC15.DRV  Roland Sound Canvas (Sound Canvas)
+   6  /szz      ZZ15.DRV  Acme WaveMaster 16 (WaveMaster)
 
 Video
    0  CGA       built in  CGA graphics (CGA)
@@ -327,67 +175,98 @@ Video
    4  MCGA      built in  MCGA/VGA graphics (MCGA)
 
 Skipped
-   XY15.DRV  label is 34 characters, the limit is 31
-   QZ15.DRV  no SKIDSETEND in the first 2048 bytes
+   XY15.DRV  label is longer than 31 characters
+   QZ15.DRV  no SKIDSETEND in the first 1024 bytes
 ```
 
-Columns: the index `skidset` allocated, the switch it derived from the
-filename, the file the row came from, and both names as they will be
-drawn, `label` with `brief` in the brackets `skidset` adds. `Skipped`
-gives a file and a reason for every block read and not used.
+Columns: the index allocated, the switch or the mode, the file the row came
+from, and both names as drawn. `Skipped` is the part that concerns a driver:
+every block found and refused, with the reason.
 
+## 8. Where the magic block may sit
 
-## 9. Driver size
+Anywhere in the file, although the end of it makes the most sense. We are
+adding to a driver format we do not control and cannot extend properly, so the
+only way in is to search the file entire.
 
-Adding a block makes the driver file bigger, which is a change to the game
-and not only to `skidset`. One of the four stock drivers does not tolerate
-it.
+The four drivers the game shipped carry no block, so their rows are built into
+`skidset` instead. Nothing needs to be done about them.
 
-`PC15.DRV`, the PC speaker driver, is 2227 bytes. Grown past roughly 2400
-bytes it still loads and the game still runs, but the music loses about a
-third of its note attacks and the level drops a fifth. It reproduces, it
-depends on the size alone and not on what the added bytes are, and there
-is no error of any kind. `AD15.DRV` and `SC15.DRV` show no such effect;
-`SC15.DRV` was tested to 2440 bytes with no change.
+It is worth noting that a driver can only carry one block. If more than one is
+present that is a hard error and the file is refused whole.
 
-Measure any driver you grow. The method needs no hardware. Only size
-matters, so a run of zeros of the right length stands in for a real block.
+### The special case of `LOAD.EXE`
 
-1. Point `SETUP.DAT` at the driver and have the autoexec run the game and
-   then write a marker file, so a game that fell back to DOS is
-   distinguishable from one still running.
-2. Capture the emulator's audio with `SDL_AUDIODRIVER=disk`,
-   `SDL_DISKAUDIOFILE` and `SDL_VIDEODRIVER=dummy`. The mixer writes
-   `AUDIO_F32`; reading it as signed 16 bit produces convincing nonsense.
-   MIDI reaches the mixer only if the device is emulated in software.
-3. Capture the stock driver twice, for a noise floor. Without one a single
-   difference means nothing.
-4. Capture the grown driver and compare level, note onset count and the
-   proportion of silent frames.
-5. Measure silence and onsets from where the music starts, not from the
-   first sample. A cold host file cache delays the game by about a second,
-   which reads as a large difference in whole-capture silence.
+Several blocks in one file is the case for `LOAD.EXE`, which governs the video
+modes. But this is new effort when we could 100% reverse engineer the `LOAD.EXE`
+file.
 
+Both the format and where the block sits can be improved in future if we learn
+more about the original driver format.
+
+### Why a video block goes in `LOAD.EXE` and not in a `.COD`
+
+A mode is a `/u NAME` switch, a `NAME.COD` holding the graphics code, and a
+`NAME.HDR`. The code is in the `.COD`, but the names `LOAD.EXE` accepts are in
+`LOAD.EXE`, they are hardcoded. Measured: `CGA.COD` and `CGA.HDR` copied to
+`ZZ.COD` and `ZZ.HDR` and asked for as `/u ZZ` does not start the game, while
+`/u CGA` beside it does.
+
+One idea to make more graphics drivers is to ship the metadata in `.COD` files
+and patch `LOAD.EXE` with `skidset`, overriding any of the built in modes. This
+is an exercise for the next releases.
+
+## 9. Driver size oddities
+
+A curious oddity has been found in `PC15.DRV`. We believe that because it is
+timed by the CPU rather than by a sound chip, growing the file breaks its
+implementation. What we measured is that the music stops sounding right, with
+no error of any kind: it looks as though it has an explicit dependency on the
+size of the file. It ships at 2227 bytes and goes wrong somewhere past 2400.
+
+The other drivers we grew, `AD15.DRV` and `SC15.DRV`, showed no such effect
+past the point where `PC15.DRV` fails. `SC15.DRV` is derived from `MT15.DRV`,
+so `MT15.DRV` can be taken the same way.
+
+So do not mess with the PC Speaker driver. It will haunt you.
 
 ## 10. Notes for implementers
 
-`SC15.DRV` is built with TASM and wlink as `format dos com`, and its block
-is a string constant placed by the build rather than appended to a
-finished binary. The block is the last thing in the file, so `SKIDSETEND`
-and its newline are the driver's final bytes. A scanner that expects bytes
-after the terminator passes every hand-written fixture and fails on the
-real thing.
+The correct way to embed the metadata block in the driver code is to add it as a
+string constant in the build rather than appending it to a finished binary. We
+provide examples on how to declare the metadata.
 
+In C89:
 
-## 11. Out of scope
+```c
+/* External linkage, not static: a static array nothing reads is dead, and an
+   optimising compiler is entitled to drop it, block and all. */
+const char skidset_block[] =
+    "SKIDSETDRV01\n"
+    "; ZZ15.DRV - Acme WaveMaster 16 driver for Stunts 1.1\n"
+    "; Copyright (c) 2026 A. Driver Author. MIT licence.\n"
+    "sound\n"
+    "label Acme WaveMaster 16\n"
+    "brief WaveMaster\n"
+    "help Select if you have an Acme WaveMaster 16 at its factory address.\n"
+    "SKIDSETEND\n";
+```
 
-How a Stunts driver works inside. `skidset` derives the switch from the
-filename, reads the block, and executes nothing, so a block is all it
-takes to appear on a menu and nothing here says what the game will then
-call.
+If you're writing the driver in fully Assembly:
 
-[UnifiedMT15](https://github.com/LowLevelMahn/UnifiedMT15) by LowLevelMahn
-is an independent reverse engineering of `MT15.DRV` in C, and the best
-public account of the slot layout and calling conventions a driver has to
-satisfy. It is a reference, not a dependency: nothing in `skidset` derives
-from it.
+```asm
+skidset_block   db  'SKIDSETDRV01', 10
+                db  '; ZZ15.DRV - Acme WaveMaster 16 driver', 10
+                db  'sound', 10
+                db  'label Acme WaveMaster 16', 10
+                db  'brief WaveMaster', 10
+                db  'help Select if you have an Acme WaveMaster 16 '
+                db  'at its factory address.', 10
+                db  'SKIDSETEND', 10
+```
+
+**Note:** The flag `10` that ends the `help` is on the second directive only.
+
+### Why the tokens are refused inside a line
+
+Nothing in `skidset` should needs it, and they are only for control.
